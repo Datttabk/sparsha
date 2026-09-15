@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# temp zip extraction
+ezgif-84caf161a6b0b024-jpg/
+*.zip
