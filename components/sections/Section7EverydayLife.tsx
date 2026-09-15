@@ -56,7 +56,7 @@ export default function Section7EverydayLife() {
           <motion.span
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.5 }}
             className="text-xs font-bold uppercase tracking-[0.25em] text-[#d81b60]"
           >
@@ -65,7 +65,7 @@ export default function Section7EverydayLife() {
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-3 font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#281920]"
           >
@@ -74,7 +74,7 @@ export default function Section7EverydayLife() {
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-4 font-serif text-xl sm:text-2xl text-[#d81b60] italic font-normal"
           >
@@ -89,7 +89,7 @@ export default function Section7EverydayLife() {
               key={card.title}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: 0.15 + index * 0.12 }}
               whileHover={{
                 y: -6,

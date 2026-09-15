@@ -58,7 +58,7 @@ export default function Section8Her28Days() {
   return (
     <section
       id="her28days"
-      className="relative w-full bg-gradient-to-b from-[#fcf4f6] via-[#fcebf0] to-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden"
+      className="scroll-mt-24 relative w-full bg-gradient-to-b from-[#fcf4f6] via-[#fcebf0] to-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden"
     >
       {/* Soft ambient background lights */}
       <div className="pointer-events-none absolute -top-24 left-1/4 h-[520px] w-[520px] rounded-full bg-[#fce7ec]/80 blur-3xl" />
@@ -74,7 +74,7 @@ export default function Section8Her28Days() {
             <motion.div
               initial={{ opacity: 0, scale: 0.92 }}
               whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true, margin: "-80px" }}
+              viewport={{ once: false, amount: 0.2, margin: "-80px" }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="relative w-[320px] h-[320px] sm:w-[420px] sm:h-[420px] lg:w-[450px] lg:h-[450px] flex items-center justify-center"
             >
@@ -182,7 +182,7 @@ export default function Section8Her28Days() {
           <motion.div
             initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.8, delay: 0.2 }}
             className="lg:col-span-6"
           >

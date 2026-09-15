@@ -54,7 +54,7 @@ export default function Section5WhyChoose() {
   return (
     <section
       id="why-sparsha"
-      className="relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
+      className="scroll-mt-24 relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden"
     >
       <div className="mx-auto max-w-7xl">
         {/* Section Header */}
@@ -62,7 +62,7 @@ export default function Section5WhyChoose() {
           <motion.span
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.5 }}
             className="text-xs font-bold uppercase tracking-[0.25em] text-[#d81b60]"
           >
@@ -71,7 +71,7 @@ export default function Section5WhyChoose() {
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-4 font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#281920]"
           >
@@ -80,7 +80,7 @@ export default function Section5WhyChoose() {
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-4 text-base sm:text-lg text-[#5a424f] leading-relaxed"
           >
@@ -95,7 +95,7 @@ export default function Section5WhyChoose() {
               key={index}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
+              viewport={{ once: false, amount: 0.2, margin: "-40px" }}
               transition={{ duration: 0.6, delay: 0.1 + index * 0.08, ease: [0.22, 1, 0.36, 1] }}
               className="group rounded-3xl border border-white/90 bg-white/70 p-7 shadow-sm backdrop-blur-md transition-all duration-300 hover:shadow-card-wellness hover:-translate-y-1.5 hover:border-[#fce7ec]"
             >

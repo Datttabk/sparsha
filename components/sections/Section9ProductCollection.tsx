@@ -68,8 +68,8 @@ export default function Section9ProductCollection() {
 
   return (
     <section
-      id="collection"
-      className="relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden"
+      id="products"
+      className="scroll-mt-24 relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden"
     >
       {/* Background glow */}
       <div className="pointer-events-none absolute -top-24 right-1/3 h-[500px] w-[500px] rounded-full bg-[#faedf1]/80 blur-3xl" />
@@ -81,7 +81,7 @@ export default function Section9ProductCollection() {
           <motion.span
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.5 }}
             className="text-xs font-bold uppercase tracking-[0.25em] text-[#d81b60]"
           >
@@ -90,7 +90,7 @@ export default function Section9ProductCollection() {
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-3 font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#281920]"
           >
@@ -99,7 +99,7 @@ export default function Section9ProductCollection() {
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-4 text-base sm:text-lg text-[#5a424f] leading-relaxed max-w-2xl mx-auto font-light"
           >
@@ -114,7 +114,7 @@ export default function Section9ProductCollection() {
               key={item.id}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: 0.15 + index * 0.12 }}
               whileHover={{
                 y: -6,
@@ -141,7 +141,7 @@ export default function Section9ProductCollection() {
                   <motion.div
                     initial={{ scale: 0.96 }}
                     whileInView={{ scale: 1 }}
-                    viewport={{ once: true }}
+                    viewport={{ once: false, amount: 0.2 }}
                     transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
                     className="relative w-full h-full"
                   >

@@ -37,9 +37,9 @@ export default function Section2PeriodAwareness() {
 
   return (
     <section
-      id="awareness"
+      id="period-awareness"
       ref={containerRef}
-      className="relative w-full min-h-[90vh] lg:min-h-screen bg-gradient-to-b from-[#fdf8f9] via-[#f9e5ec] to-[#fbf2f5] py-28 lg:py-36 px-4 sm:px-6 lg:px-8 overflow-hidden flex items-center justify-center border-t border-[#f5e4e8]"
+      className="scroll-mt-24 relative w-full min-h-[90vh] lg:min-h-screen bg-gradient-to-b from-[#fdf8f9] via-[#f9e5ec] to-[#fbf2f5] py-28 lg:py-36 px-4 sm:px-6 lg:px-8 overflow-hidden flex items-center justify-center border-t border-[#f5e4e8]"
     >
       {/* Cinematic Atmospheric Lights (Blush pink, White, Soft Crimson, Subtle Blue) */}
       <div className="pointer-events-none absolute -top-40 left-1/4 h-[550px] w-[550px] rounded-full bg-[#fbcfe8]/40 blur-[130px]" />
@@ -125,7 +125,7 @@ export default function Section2PeriodAwareness() {
           <motion.div
             initial={{ opacity: 0, y: -15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6 }}
             className="inline-flex items-center gap-2 rounded-full bg-white/85 px-4 py-1.5 text-xs font-bold text-[#d81b60] shadow-sm backdrop-blur-md border border-rose-100"
           >
@@ -139,7 +139,7 @@ export default function Section2PeriodAwareness() {
           <motion.h2
             initial={{ opacity: 0, y: 25 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.8, delay: 0.15 }}
             className="font-serif text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-[#281920] leading-[1.12]"
           >
@@ -149,7 +149,7 @@ export default function Section2PeriodAwareness() {
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.7, delay: 0.3 }}
             className="mt-6 text-base sm:text-xl text-[#5a424f] max-w-2xl mx-auto font-light leading-relaxed"
           >
@@ -164,7 +164,7 @@ export default function Section2PeriodAwareness() {
               key={item.title}
               initial={{ opacity: 0, y: 25 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.5, delay: 0.35 + idx * 0.12 }}
               whileHover={{ y: -4, transition: { duration: 0.2 } }}
               className="rounded-2xl border border-white/90 bg-white/80 p-5 shadow-sm backdrop-blur-md transition-all hover:shadow-md hover:border-rose-200 text-left"

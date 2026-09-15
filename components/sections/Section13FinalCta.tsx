@@ -13,7 +13,7 @@ export default function Section13FinalCta() {
         <motion.div
           initial={{ opacity: 0.4, scale: 0.95 }}
           whileInView={{ opacity: 0.75, scale: 1.05 }}
-          viewport={{ once: true }}
+          viewport={{ once: false, amount: 0.2 }}
           transition={{ duration: 1.5, ease: "easeOut" }}
           className="absolute top-1/4 left-1/2 -translate-x-1/2 h-[500px] w-[800px] rounded-full bg-gradient-to-b from-[#fbcfe8]/40 via-[#fde047]/10 to-transparent blur-3xl"
         />
@@ -27,7 +27,7 @@ export default function Section13FinalCta() {
             <motion.div
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6 }}
               className="inline-flex items-center gap-2 self-start rounded-full bg-white/80 px-4 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#d81b60] shadow-sm border border-[#fce7ec]"
             >
@@ -38,7 +38,7 @@ export default function Section13FinalCta() {
             <motion.h2
               initial={{ opacity: 0, y: 25 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.8, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
               className="mt-6 font-serif text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-[#281920] leading-[1.08]"
             >
@@ -50,7 +50,7 @@ export default function Section13FinalCta() {
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.7, delay: 0.25 }}
               className="mt-6 text-base sm:text-xl text-[#5a424f] leading-relaxed max-w-xl"
             >
@@ -61,7 +61,7 @@ export default function Section13FinalCta() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.7, delay: 0.4 }}
               className="mt-8 flex flex-wrap items-center gap-4"
             >
@@ -87,7 +87,7 @@ export default function Section13FinalCta() {
           <motion.div
             initial={{ opacity: 0, scale: 0.94, y: 20 }}
             whileInView={{ opacity: 1, scale: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px" }}
+            viewport={{ once: false, amount: 0.2, margin: "-50px" }}
             transition={{ duration: 0.85, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="lg:col-span-5 relative flex justify-center"
           >

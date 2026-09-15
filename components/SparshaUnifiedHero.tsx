@@ -318,8 +318,9 @@ export default function SparshaUnifiedHero() {
 
   return (
     <section
+      id="home"
       ref={sectionRef}
-      className="relative w-full bg-[#fdf8f9] text-[#281920]"
+      className="scroll-mt-24 relative w-full bg-[#fdf8f9] text-[#281920]"
       style={{ height: "550vh" }}
       aria-label="Sparsha Hero & Cinematic Story Experience"
     >

@@ -44,7 +44,7 @@ export default function Section11OurPromise() {
             <motion.span
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6 }}
               className="text-xs font-bold uppercase tracking-[0.25em] text-[#d81b60]"
             >
@@ -54,7 +54,7 @@ export default function Section11OurPromise() {
             <motion.h2
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.7, delay: 0.1 }}
               className="mt-4 font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#281920] leading-[1.12]"
             >
@@ -65,7 +65,7 @@ export default function Section11OurPromise() {
             <motion.p
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.7, delay: 0.2 }}
               className="mt-4 text-base sm:text-lg text-[#5a424f] leading-relaxed font-light"
             >
@@ -79,7 +79,7 @@ export default function Section11OurPromise() {
                   key={idx}
                   initial={{ opacity: 0, y: 25 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
+                  viewport={{ once: false, amount: 0.2 }}
                   transition={{ duration: 0.5, delay: 0.3 + idx * 0.12 }}
                   whileHover={{ y: -2, transition: { duration: 0.2 } }}
                   className="flex items-start gap-4 rounded-2xl border border-white/90 bg-white/80 p-4 sm:p-5 shadow-sm backdrop-blur-sm transition-all hover:shadow-md hover:border-rose-100"
@@ -105,7 +105,7 @@ export default function Section11OurPromise() {
             <motion.div
               initial={{ opacity: 0, scale: 0.94, y: 20 }}
               whileInView={{ opacity: 1, scale: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
+              viewport={{ once: false, amount: 0.2, margin: "-50px" }}
               transition={{ duration: 0.85, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
               className="relative w-full max-w-md rounded-3xl border-2 border-white/95 bg-gradient-to-br from-[#faedf1]/90 via-white to-[#fbf0f3]/90 p-6 sm:p-8 shadow-card-wellness backdrop-blur-md flex flex-col items-center justify-center text-center overflow-hidden"
             >
@@ -142,7 +142,7 @@ export default function Section11OurPromise() {
               <motion.div
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
                 className="mt-4"
               >

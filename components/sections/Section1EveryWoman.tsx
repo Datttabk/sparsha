@@ -49,7 +49,7 @@ export default function Section1EveryWoman() {
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
+            viewport={{ once: false, amount: 0.2, margin: "-100px" }}
             transition={{ duration: 0.8, ease: "easeOut" }}
             className="lg:col-span-6 flex flex-col justify-center"
           >
@@ -62,7 +62,7 @@ export default function Section1EveryWoman() {
               <motion.span 
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.6, delay: 0.1 }}
                 className="block"
               >
@@ -71,7 +71,7 @@ export default function Section1EveryWoman() {
               <motion.span 
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.6, delay: 0.25 }}
                 className="block text-[#d81b60]"
               >
@@ -83,7 +83,7 @@ export default function Section1EveryWoman() {
             <motion.p 
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: 0.35 }}
               className="mt-4 font-serif text-2xl sm:text-3xl text-[#d81b60] italic font-normal"
             >
@@ -93,7 +93,7 @@ export default function Section1EveryWoman() {
             <motion.p 
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.6, delay: 0.45 }}
               className="mt-4 text-base sm:text-lg text-[#5a424f] leading-relaxed max-w-xl font-light"
             >
@@ -107,7 +107,7 @@ export default function Section1EveryWoman() {
                   key={block.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
+                  viewport={{ once: false, amount: 0.2 }}
                   transition={{ duration: 0.5, delay: 0.5 + idx * 0.12 }}
                   whileHover={{ y: -4, transition: { duration: 0.2 } }}
                   className="rounded-2xl border border-white/90 bg-white/75 p-5 shadow-sm backdrop-blur-sm transition-all duration-300 hover:shadow-md hover:border-[#fce7ec]"
@@ -130,7 +130,7 @@ export default function Section1EveryWoman() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.96 }}
             whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true, margin: "-100px" }}
+            viewport={{ once: false, amount: 0.2, margin: "-100px" }}
             transition={{ duration: 0.9, ease: "easeOut" }}
             className="lg:col-span-6 relative flex justify-center"
           >
@@ -150,7 +150,7 @@ export default function Section1EveryWoman() {
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.6, delay: 0.6 }}
                 className="absolute bottom-6 left-6 right-6 rounded-2xl bg-white/90 backdrop-blur-md p-4 border border-white/80 shadow-md"
               >

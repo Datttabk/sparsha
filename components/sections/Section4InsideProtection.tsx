@@ -36,7 +36,7 @@ export default function Section4InsideProtection() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
+          viewport={{ once: false, amount: 0.2, margin: "-80px" }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           className="max-w-3xl mx-auto mb-8 sm:mb-12"
         >
@@ -58,7 +58,7 @@ export default function Section4InsideProtection() {
         <motion.div
           initial={{ opacity: 0, scale: 0.94, y: 30 }}
           whileInView={{ opacity: 1, scale: 1, y: 0 }}
-          viewport={{ once: true, margin: "-60px" }}
+          viewport={{ once: false, amount: 0.2, margin: "-60px" }}
           transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
           style={{ y: shouldReduceMotion ? 0 : parallaxY }}
           className="relative w-full max-w-5xl flex justify-center items-center"
@@ -100,7 +100,7 @@ export default function Section4InsideProtection() {
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
+          viewport={{ once: false, amount: 0.2 }}
           transition={{ duration: 0.6, delay: 0.3 }}
           className="mt-8 sm:mt-10 inline-flex items-center gap-2 rounded-full bg-white/80 px-5 py-2 text-xs sm:text-sm font-medium text-[#5a424f] shadow-sm border border-rose-100 backdrop-blur-sm"
         >

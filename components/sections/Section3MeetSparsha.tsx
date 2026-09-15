@@ -58,8 +58,8 @@ export default function Section3MeetSparsha() {
 
   return (
     <section
-      id="products"
-      className="relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden border-t border-[#f5e4e8]"
+      id="our-story"
+      className="scroll-mt-24 relative w-full bg-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden border-t border-[#f5e4e8]"
     >
       {/* Soft background ambient glow */}
       <div className="pointer-events-none absolute -top-32 right-1/4 h-[500px] w-[500px] rounded-full bg-[#faedf1]/80 blur-3xl" />
@@ -71,7 +71,7 @@ export default function Section3MeetSparsha() {
           <motion.span
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.5 }}
             className="text-xs font-bold uppercase tracking-[0.25em] text-[#d81b60]"
           >
@@ -80,7 +80,7 @@ export default function Section3MeetSparsha() {
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mt-3 font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#281920]"
           >
@@ -89,7 +89,7 @@ export default function Section3MeetSparsha() {
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
+            viewport={{ once: false, amount: 0.2 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="mt-4 text-base sm:text-lg text-[#5a424f] leading-relaxed max-w-2xl mx-auto font-light"
           >
@@ -105,7 +105,7 @@ export default function Section3MeetSparsha() {
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.7 }}
               className="relative w-full max-w-xs mx-auto aspect-square rounded-3xl p-4 bg-white/70 border border-white/90 shadow-card-wellness overflow-hidden"
             >
@@ -125,7 +125,7 @@ export default function Section3MeetSparsha() {
                 key={b.title}
                 initial={{ opacity: 0, x: -25 }}
                 whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.5, delay: 0.2 + idx * 0.15 }}
                 whileHover={{ y: -3, transition: { duration: 0.2 } }}
                 className="group rounded-2xl border border-white/90 bg-white/80 p-4 sm:p-5 shadow-sm backdrop-blur-sm transition-all duration-300 hover:shadow-md hover:border-rose-100 flex items-start gap-4"
@@ -155,7 +155,7 @@ export default function Section3MeetSparsha() {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               animate={{ y: [0, -8, 0] }}
               style={{ transition: "transform 4s ease-in-out infinite" }}
@@ -185,7 +185,7 @@ export default function Section3MeetSparsha() {
             <motion.div 
               initial={{ opacity: 0, y: 15 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
+              viewport={{ once: false, amount: 0.2 }}
               transition={{ duration: 0.5, delay: 0.6 }}
               className="mt-6"
             >
@@ -206,7 +206,7 @@ export default function Section3MeetSparsha() {
                 key={b.title}
                 initial={{ opacity: 0, x: 25 }}
                 whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
+                viewport={{ once: false, amount: 0.2 }}
                 transition={{ duration: 0.5, delay: 0.2 + idx * 0.15 }}
                 whileHover={{ y: -3, transition: { duration: 0.2 } }}
                 className="group rounded-2xl border border-white/90 bg-white/80 p-4 sm:p-5 shadow-sm backdrop-blur-sm transition-all duration-300 hover:shadow-md hover:border-rose-100 flex items-start gap-4"
