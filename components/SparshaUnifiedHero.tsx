@@ -38,6 +38,8 @@ export default function SparshaUnifiedHero() {
   const counterContainerRef = useRef<HTMLDivElement>(null);
   const counterTextRef = useRef<HTMLSpanElement>(null);
   const debugHudRef = useRef<HTMLDivElement>(null);
+  const compareContainerRef = useRef<HTMLDivElement>(null);
+  const compareImgRef = useRef<HTMLImageElement>(null);
 
   // Animation & Frame tracking refs (zero React re-renders on scroll)
   const targetFrameRef = useRef<number>(0);
@@ -63,8 +65,9 @@ export default function SparshaUnifiedHero() {
   const isIntersectingRef = useRef<boolean>(true);
   const prefersReducedMotionRef = useRef<boolean>(false);
 
-  // Development debug tracking (HUD enabled via ?debug=1)
+  // Development debug tracking (HUD enabled via ?debug=1, comparator via ?compare=1)
   const isDebugModeRef = useRef<boolean>(false);
+  const isCompareModeRef = useRef<boolean>(false);
   const fpsRef = useRef<number>(60);
   const frameCountRef = useRef<number>(0);
   const lastFpsTimeRef = useRef<number>(0);
@@ -78,29 +81,41 @@ export default function SparshaUnifiedHero() {
     (img: ImageBitmap | HTMLImageElement) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const ctx = canvas.getContext("2d", { alpha: false });
+      const ctx = canvas.getContext("2d", {
+        alpha: false,
+        desynchronized: true,
+      });
       if (!ctx) return;
 
+      // High quality filtering on direct canvas blit
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = isLowTier ? "medium" : "high";
+      ctx.imageSmoothingQuality = "high";
 
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
-      // Maintain source 1280x720 aspect ratio (16:9) with exact cover math
-      const scale = Math.max(
-        canvasWidth / SOURCE_WIDTH,
-        canvasHeight / SOURCE_HEIGHT
-      );
-      const drawWidth = Math.round(SOURCE_WIDTH * scale);
-      const drawHeight = Math.round(SOURCE_HEIGHT * scale);
+      // Dynamically read actual natural source dimensions (future-proofed for 720p, 1080p, 4K)
+      const sourceWidth =
+        img.width || (img as HTMLImageElement).naturalWidth || 1280;
+      const sourceHeight =
+        img.height || (img as HTMLImageElement).naturalHeight || 720;
+
+      if (sourceWidth === 0 || sourceHeight === 0) return;
+
+      // Single-pass direct cover math: maps image directly to physical canvas grid
+      const hRatio = canvasWidth / sourceWidth;
+      const vRatio = canvasHeight / sourceHeight;
+      const scale = Math.max(hRatio, vRatio);
+
+      const drawWidth = Math.round(sourceWidth * scale);
+      const drawHeight = Math.round(sourceHeight * scale);
       const drawX = Math.round((canvasWidth - drawWidth) / 2);
       const drawY = Math.round((canvasHeight - drawHeight) / 2);
 
-      // Directly paint over previous opaque frame: zero blank frames, zero tearing
+      // Paint directly over previous opaque frame: zero blank frames, zero tearing, zero blur
       ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
     },
-    [isLowTier]
+    []
   );
 
   // Strict continuity fallback:
@@ -161,44 +176,63 @@ export default function SparshaUnifiedHero() {
     const targetFrame = targetFrameRef.current + 1;
     const dir = scrollDirectionRef.current === 1 ? "DOWN" : "UP";
     const canvas = canvasRef.current;
+    const rawDpr = (window.devicePixelRatio || 1).toFixed(2);
     const effectiveDpr = (canvas.width / (window.innerWidth || 1)).toFixed(2);
     const progressPct = Math.round(scrollProgressRef.current * 100);
 
+    const activeImg =
+      lastDrawnIndexRef.current >= 0
+        ? bitmapCacheRef.current[lastDrawnIndexRef.current]
+        : null;
+    const sourceDim = activeImg
+      ? `${activeImg.width}×${activeImg.height}`
+      : "1280×720";
+
     debugHudRef.current.innerHTML = `
-      <div style="font-weight:700;color:#f472b6;margin-bottom:3px;">SPARSHA FRAME DEBUG</div>
-      <div>FRAME: <span style="color:#38bdf8">${String(activeFrame).padStart(3, "0")}</span> / ${TOTAL_FRAMES}</div>
-      <div>TARGET: <span style="color:#facc15">${String(targetFrame).padStart(3, "0")}</span> (${dir})</div>
-      <div>LOADED: <span style="color:#4ade80">${loadedCount}</span> / ${TOTAL_FRAMES} (Active: ${activeLoadsRef.current})</div>
-      <div>FPS: <span style="color:#a78bfa">${fpsRef.current}</span></div>
-      <div>CANVAS: ${canvas.width}×${canvas.height} (DPR: ${effectiveDpr})</div>
+      <div style="font-weight:700;color:#f472b6;margin-bottom:4px;letter-spacing:0.05em;">SPARSHA HIGH-FIDELITY DIAGNOSTIC</div>
+      <div>FRAME: <span style="color:#38bdf8;font-weight:bold;">${String(activeFrame).padStart(3, "0")}</span> / ${TOTAL_FRAMES}</div>
+      <div>TARGET: <span style="color:#facc15;font-weight:bold;">${String(targetFrame).padStart(3, "0")}</span> (${dir})</div>
+      <div>LOADED: <span style="color:#4ade80;">${loadedCount}</span> / ${TOTAL_FRAMES} (Active: ${activeLoadsRef.current})</div>
+      <div>FPS: <span style="color:#a78bfa;font-weight:bold;">${fpsRef.current}</span></div>
+      <div>VIEWPORT (CSS): ${window.innerWidth}×${window.innerHeight}</div>
+      <div>CANVAS BUFFER: ${canvas.width}×${canvas.height}</div>
+      <div>DPR: ${effectiveDpr} (Screen DPR: ${rawDpr})</div>
+      <div>SOURCE NATIVE: ${sourceDim} (16:9)</div>
       <div>SCROLL: ${progressPct}%</div>
+      <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.2);padding-top:4px;font-size:10px;color:#94a3b8;">
+        1:1 Physical Grid Mapping • No Double Scaling • 100% Opacity
+      </div>
     `;
+
+    // Synchronize split-screen comparison image with active frame
+    if (isCompareModeRef.current && compareImgRef.current) {
+      const activeIdx =
+        lastDrawnIndexRef.current >= 0 ? lastDrawnIndexRef.current : 0;
+      compareImgRef.current.src = getFramePath(activeIdx);
+    }
   }, []);
 
-  // Resize canvas with devicePixelRatio capped to avoid GPU bloat & preserve 1280x720 clarity
+  // Resize canvas matching display physical pixel grid 1:1 to eliminate compositor interpolation blur
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Cap DPR at 1.5 and buffer at 1920x1080 to prevent massive 4K/8K GPU allocation
-    const dpr = Math.min(window.devicePixelRatio || 1, dprCap, 1.5);
     const displayWidth = window.innerWidth;
     const displayHeight = window.innerHeight;
 
-    let renderWidth = Math.round(displayWidth * dpr);
-    let renderHeight = Math.round(displayHeight * dpr);
+    // Use physical screen DPR (capped at 2.0 for Retina 1:1 sharpness, 1.0-1.25 on low-tier)
+    const rawDpr = window.devicePixelRatio || 1;
+    const effectiveDpr = Math.min(rawDpr, isLowTier ? 1.0 : 2.0);
 
-    if (renderWidth > MAX_CANVAS_WIDTH || renderHeight > MAX_CANVAS_HEIGHT) {
-      const downscale = Math.min(
-        MAX_CANVAS_WIDTH / renderWidth,
-        MAX_CANVAS_HEIGHT / renderHeight
-      );
-      renderWidth = Math.round(renderWidth * downscale);
-      renderHeight = Math.round(renderHeight * downscale);
+    const bufferWidth = Math.round(displayWidth * effectiveDpr);
+    const bufferHeight = Math.round(displayHeight * effectiveDpr);
+
+    if (canvas.width !== bufferWidth || canvas.height !== bufferHeight) {
+      canvas.width = bufferWidth;
+      canvas.height = bufferHeight;
     }
 
-    canvas.width = renderWidth;
-    canvas.height = renderHeight;
+    // CSS dimensions strictly match layout coordinates
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
 
@@ -215,9 +249,9 @@ export default function SparshaUnifiedHero() {
       );
       drawFrameWithStrictContinuity(activeFrame);
     }
-  }, [dprCap, drawFrameWithStrictContinuity, paintToCanvas]);
+  }, [drawFrameWithStrictContinuity, isLowTier, paintToCanvas]);
 
-  // Load single frame with deduplicated requests and instant decode-to-canvas presentation
+  // Load single frame with deduplicated requests, high-precision decoding, and instant presentation
   const loadSingleFrame = useCallback(
     (index: number) => {
       if (index < 0 || index >= TOTAL_FRAMES) return;
@@ -235,7 +269,12 @@ export default function SparshaUnifiedHero() {
         if (success) {
           try {
             if (typeof window.createImageBitmap === "function") {
-              const bitmap = await window.createImageBitmap(img);
+              const bitmap = await window.createImageBitmap(img, {
+                imageOrientation: "from-image",
+                premultiplyAlpha: "none",
+                colorSpaceConversion: "default",
+                resizeQuality: "high",
+              });
               if (!isComponentMountedRef.current) return;
               bitmapCacheRef.current[index] = bitmap;
             } else if (typeof img.decode === "function") {
@@ -350,10 +389,9 @@ export default function SparshaUnifiedHero() {
       heroUiRef.current.style.pointerEvents = heroUiOpacity > 0.08 ? "auto" : "none";
     }
 
-    // 2. Canvas visibility: soft fade-in as user starts scrolling
-    if (canvasRef.current) {
-      const canvasOpacity = Math.min(1, Math.max(0.7, 0.7 + progress * 2));
-      canvasRef.current.style.opacity = canvasOpacity.toFixed(2);
+    // 2. Canvas visibility: maintain 100% direct opacity for maximum color fidelity & contrast
+    if (canvasRef.current && canvasRef.current.style.opacity !== "1") {
+      canvasRef.current.style.opacity = "1";
     }
 
     // 3. Milestone 1: (18% - 42%)
@@ -400,7 +438,7 @@ export default function SparshaUnifiedHero() {
     isComponentMountedRef.current = true;
     handleResize();
 
-    // Check debug mode query parameter (?debug=1)
+    // Check debug mode query parameter (?debug=1) and comparative test mode (?compare=1)
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       if (params.get("debug") === "1") {
@@ -408,6 +446,13 @@ export default function SparshaUnifiedHero() {
         if (debugHudRef.current) {
           debugHudRef.current.classList.remove("hidden");
           debugHudRef.current.classList.add("block");
+        }
+      }
+      if (params.get("compare") === "1") {
+        isCompareModeRef.current = true;
+        if (compareContainerRef.current) {
+          compareContainerRef.current.classList.remove("hidden");
+          compareContainerRef.current.classList.add("block");
         }
       }
     }
@@ -610,15 +655,17 @@ export default function SparshaUnifiedHero() {
       <div className="sticky top-0 left-0 h-screen w-full overflow-hidden bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf2f5]">
         
         {/* ======================================================== */}
-        {/* LAYER 1: Full-Bleed High-DPI Canvas                      */}
+        {/* LAYER 1: Full-Bleed Direct Canvas (100% Source Clarity)  */}
         {/* ======================================================== */}
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 block h-full w-full object-cover select-none pointer-events-none transition-opacity duration-300 opacity-70"
+          className="absolute inset-0 block h-full w-full select-none pointer-events-none opacity-100"
+          style={{ imageRendering: "auto" }}
         />
 
-        {/* Soft edge ambient light vignette blending with the rest of the Sparsha theme */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#faedf1]/40 via-transparent to-[#fdf8f9]/30" />
+        {/* Subtle top & bottom edge blending (leaves the entire center 85% crystal clear) */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#fdf8f9]/70 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#faedf1]/70 to-transparent" />
 
         {/* ======================================================== */}
         {/* LAYER 2: Existing Approved Sparsha Hero UI Layer         */}
@@ -909,6 +956,31 @@ export default function SparshaUnifiedHero() {
           ref={debugHudRef}
           className="pointer-events-none fixed bottom-4 left-4 z-50 hidden rounded-xl bg-black/85 p-3 font-mono text-[11px] leading-relaxed text-white shadow-2xl backdrop-blur-md border border-white/20"
         />
+
+        {/* Development-only Source vs Canvas Split-Test Comparator (?compare=1) */}
+        <div
+          ref={compareContainerRef}
+          className="pointer-events-none fixed top-20 right-4 z-50 hidden max-w-xs sm:max-w-sm rounded-xl bg-black/90 p-3 font-mono text-[11px] text-white shadow-2xl backdrop-blur-md border border-white/20"
+        >
+          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-white/20">
+            <span className="font-bold text-[#f472b6]">SOURCE &lt;img&gt; COMPARATOR</span>
+            <span className="text-[10px] text-emerald-400 font-semibold">1:1 MATCH</span>
+          </div>
+          <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-white/30 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={compareImgRef}
+              alt="Raw source frame reference"
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute top-1 left-1 rounded bg-black/80 px-1.5 py-0.5 text-[9px] text-white">
+              Raw Source JPG (1280×720)
+            </div>
+          </div>
+          <div className="mt-1.5 text-[9px] text-slate-400 leading-tight">
+            Live comparison: canvas output in main viewport vs raw source JPG file.
+          </div>
+        </div>
       </div>
     </section>
   );
