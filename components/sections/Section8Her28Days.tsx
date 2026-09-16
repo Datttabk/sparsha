@@ -60,9 +60,19 @@ export default function Section8Her28Days() {
       id="her28days"
       className="scroll-mt-24 relative w-full bg-gradient-to-b from-[#fcf4f6] via-[#fcebf0] to-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden"
     >
-      {/* Soft ambient background lights */}
-      <div className="pointer-events-none absolute -top-24 left-1/4 h-[520px] w-[520px] rounded-full bg-[#fce7ec]/80 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-10 right-1/4 h-[480px] w-[480px] rounded-full bg-[#faedf1]/80 blur-3xl" />
+      {/* Soft ambient background lights (GPU single-pass radial gradients) */}
+      <div
+        className="pointer-events-none absolute -top-24 left-1/4 h-[520px] w-[520px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(252,231,236,0.75) 0%, rgba(252,231,236,0.2) 45%, transparent 70%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-10 right-1/4 h-[480px] w-[480px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(250,237,241,0.7) 0%, rgba(250,237,241,0.15) 45%, transparent 70%)",
+        }}
+      />
 
       <div className="mx-auto max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">

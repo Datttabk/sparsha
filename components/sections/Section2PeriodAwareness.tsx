@@ -3,9 +3,11 @@
 import React, { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Check, Heart, Sparkles } from "lucide-react";
+import { useAdaptivePerformance } from "@/hooks/useAdaptivePerformance";
 
 export default function Section2PeriodAwareness() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { isLowTier, parallaxScale } = useAdaptivePerformance();
 
   // Scroll tracking across the section
   const { scrollYProgress } = useScroll({
@@ -13,16 +15,16 @@ export default function Section2PeriodAwareness() {
     offset: ["start end", "end start"],
   });
 
-  // Ribbon and wave scroll transforms (GPU accelerated)
-  const ribbonX1 = useTransform(scrollYProgress, [0, 1], ["-12%", "14%"]);
-  const ribbonX2 = useTransform(scrollYProgress, [0, 1], ["8%", "-10%"]);
-  const ribbonRotate = useTransform(scrollYProgress, [0, 1], [-4, 6]);
-  const ribbonScale = useTransform(scrollYProgress, [0, 0.5, 1], [0.94, 1.04, 0.96]);
+  // Ribbon and wave scroll transforms (GPU accelerated, adapted by device capability)
+  const ribbonX1 = useTransform(scrollYProgress, [0, 1], [`-${12 * parallaxScale}%`, `${14 * parallaxScale}%`]);
+  const ribbonX2 = useTransform(scrollYProgress, [0, 1], [`${8 * parallaxScale}%`, `-${10 * parallaxScale}%`]);
+  const ribbonRotate = useTransform(scrollYProgress, [0, 1], [-4 * parallaxScale, 6 * parallaxScale]);
+  const ribbonScale = useTransform(scrollYProgress, [0, 0.5, 1], [0.96, 1.02, 0.98]);
 
   // Petals parallax
-  const petal1Y = useTransform(scrollYProgress, [0, 1], [-40, 90]);
-  const petal2Y = useTransform(scrollYProgress, [0, 1], [80, -70]);
-  const petal3Y = useTransform(scrollYProgress, [0, 1], [-20, 120]);
+  const petal1Y = useTransform(scrollYProgress, [0, 1], [-40 * parallaxScale, 90 * parallaxScale]);
+  const petal2Y = useTransform(scrollYProgress, [0, 1], [80 * parallaxScale, -70 * parallaxScale]);
+  const petal3Y = useTransform(scrollYProgress, [0, 1], [-20 * parallaxScale, 120 * parallaxScale]);
 
   // Supporting statement reveal
   const statementOpacity = useTransform(scrollYProgress, [0.35, 0.6], [0.3, 1]);
@@ -41,10 +43,25 @@ export default function Section2PeriodAwareness() {
       ref={containerRef}
       className="scroll-mt-24 relative w-full min-h-[90vh] lg:min-h-screen bg-gradient-to-b from-[#fdf8f9] via-[#f9e5ec] to-[#fbf2f5] py-28 lg:py-36 px-4 sm:px-6 lg:px-8 overflow-hidden flex items-center justify-center border-t border-[#f5e4e8]"
     >
-      {/* Cinematic Atmospheric Lights (Blush pink, White, Soft Crimson, Subtle Blue) */}
-      <div className="pointer-events-none absolute -top-40 left-1/4 h-[550px] w-[550px] rounded-full bg-[#fbcfe8]/40 blur-[130px]" />
-      <div className="pointer-events-none absolute bottom-0 right-10 h-[600px] w-[600px] rounded-full bg-[#fda4af]/30 blur-[140px]" />
-      <div className="pointer-events-none absolute top-1/3 -left-20 h-[400px] w-[400px] rounded-full bg-[#dbeafe]/40 blur-[120px]" />
+      {/* Cinematic Atmospheric Lights (GPU Single-Pass Radial Gradients) */}
+      <div
+        className="pointer-events-none absolute -top-40 left-1/4 h-[550px] w-[550px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(251,207,232,0.45) 0%, rgba(251,207,232,0.15) 45%, transparent 70%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-0 right-10 h-[600px] w-[600px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(253,164,175,0.35) 0%, rgba(253,164,175,0.1) 45%, transparent 70%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/3 -left-20 h-[400px] w-[400px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(219,234,254,0.4) 0%, rgba(219,234,254,0.1) 45%, transparent 70%)",
+        }}
+      />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.75)_0%,transparent_75%)]" />
 
       {/* FULL-WIDTH SCROLL-REACTIVE FLOWING SILK RIBBON WAVES */}

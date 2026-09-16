@@ -19,14 +19,21 @@ export default function SparshaNavbar() {
     { name: "Contact", id: "contact", href: "#contact" },
   ];
 
-  // Active section tracking via IntersectionObserver & scroll listener
+  // Active section tracking via RAF-throttled scroll listener
   useEffect(() => {
-    const handleScroll = () => {
+    let ticking = false;
+    let lastActive = "home";
+
+    const updateActiveSection = () => {
       const scrollY = window.scrollY;
       
       // Top of page is always home
       if (scrollY < 250) {
-        setActiveSection("home");
+        if (lastActive !== "home") {
+          lastActive = "home";
+          setActiveSection("home");
+        }
+        ticking = false;
         return;
       }
 
@@ -38,15 +45,26 @@ export default function SparshaNavbar() {
           const rect = el.getBoundingClientRect();
           // Active when top of section is within upper half of viewport
           if (rect.top <= 240 && rect.bottom >= 120) {
-            setActiveSection(id);
-            return;
+            if (lastActive !== id) {
+              lastActive = id;
+              setActiveSection(id);
+            }
+            break;
           }
         }
+      }
+      ticking = false;
+    };
+
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateActiveSection);
+        ticking = true;
       }
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
+    updateActiveSection();
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 

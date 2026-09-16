@@ -27,8 +27,18 @@ export default function Section1EveryWoman() {
   return (
     <section className="relative w-full bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fdf8f9] py-24 sm:py-32 px-4 sm:px-6 lg:px-8 overflow-hidden">
       {/* Soft background ambient glow & floating subtle petals */}
-      <div className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full bg-[#f8d7e3]/35 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-10 right-10 h-[400px] w-[400px] rounded-full bg-[#fae5ed]/35 blur-3xl" />
+      <div
+        className="pointer-events-none absolute -top-24 -left-24 h-[420px] w-[420px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(248,215,227,0.4) 0%, rgba(248,215,227,0.1) 45%, transparent 70%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute bottom-10 right-10 h-[400px] w-[400px] rounded-full"
+        style={{
+          background: "radial-gradient(circle, rgba(250,229,237,0.4) 0%, rgba(250,229,237,0.1) 45%, transparent 70%)",
+        }}
+      />
 
       {/* Decorative Drifting Petals (pure CSS/motion lightweight) */}
       <motion.div

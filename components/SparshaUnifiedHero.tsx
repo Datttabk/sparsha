@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import {
   Leaf,
@@ -11,9 +11,10 @@ import {
   Sparkles,
   ChevronDown,
 } from "lucide-react";
+import { useAdaptivePerformance } from "@/hooks/useAdaptivePerformance";
 
 const TOTAL_FRAMES = 300;
-const SMOOTHING_FACTOR = 0.14;
+const BASE_SMOOTHING_FACTOR = 0.14;
 
 // Programmatically generate zero-padded frame paths (001 -> 300)
 const getFramePath = (index: number): string => {
@@ -25,18 +26,29 @@ export default function SparshaUnifiedHero() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Animation & Frame tracking refs (avoid triggering React re-renders in render loop)
+  // Direct DOM refs for zero-re-render scroll transitions
+  const heroUiRef = useRef<HTMLDivElement>(null);
+  const milestone1Ref = useRef<HTMLDivElement>(null);
+  const milestone2Ref = useRef<HTMLDivElement>(null);
+  const milestone3Ref = useRef<HTMLDivElement>(null);
+  const scrollPromptRef = useRef<HTMLDivElement>(null);
+  const counterContainerRef = useRef<HTMLDivElement>(null);
+  const counterTextRef = useRef<HTMLSpanElement>(null);
+
+  // Animation & Frame tracking refs (zero React re-renders on scroll)
   const targetFrameRef = useRef<number>(0);
   const currentFrameRef = useRef<number>(0);
+  const scrollProgressRef = useRef<number>(0);
   const bitmapCacheRef = useRef<(ImageBitmap | HTMLImageElement | null)[]>(
     new Array(TOTAL_FRAMES).fill(null)
   );
   const loadedFlagsRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
   const animationFrameIdRef = useRef<number | null>(null);
   const isComponentMountedRef = useRef<boolean>(true);
+  const isIntersectingRef = useRef<boolean>(true);
 
-  // Smooth scroll progress state for UI transitions
-  const [scrollProgress, setScrollProgress] = useState<number>(0);
+  // Adaptive performance tiering
+  const { tier, dprCap, isLowTier, isMobile } = useAdaptivePerformance();
 
   // Draw an image or ImageBitmap using high-quality cover math and high-DPI scaling
   const renderFrame = useCallback((img: ImageBitmap | HTMLImageElement) => {
@@ -47,7 +59,7 @@ export default function SparshaUnifiedHero() {
 
     // High quality rendering settings to prevent pixelation, jaggies, and compression artifacts
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
+    ctx.imageSmoothingQuality = isLowTier ? "medium" : "high";
 
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
@@ -66,7 +78,7 @@ export default function SparshaUnifiedHero() {
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-  }, []);
+  }, [isLowTier]);
 
   // Nearest-neighbor fallback: find and render the closest fully decoded frame
   const renderClosestLoadedFrame = useCallback(
@@ -100,12 +112,12 @@ export default function SparshaUnifiedHero() {
     [renderFrame]
   );
 
-  // Resize canvas with devicePixelRatio scaling capped at 2.5 for crisp Retina output
+  // Resize canvas with devicePixelRatio scaling capped dynamically for GPU efficiency
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
     const displayWidth = window.innerWidth;
     const displayHeight = window.innerHeight;
 
@@ -120,7 +132,7 @@ export default function SparshaUnifiedHero() {
       Math.max(0, Math.round(currentFrameRef.current))
     );
     renderClosestLoadedFrame(activeFrameIndex);
-  }, [renderClosestLoadedFrame]);
+  }, [dprCap, renderClosestLoadedFrame]);
 
   // Load an individual frame with hardware-accelerated GPU decoding via createImageBitmap
   const loadSingleFrame = useCallback(
@@ -170,6 +182,63 @@ export default function SparshaUnifiedHero() {
     []
   );
 
+  // Directly update DOM styles based on scroll progress (avoids all React component re-renders)
+  const updateScrollStyles = useCallback((progress: number) => {
+    // 1. Hero UI Layer: 0% to 6% fully visible, 6% to 18% fades out & floats upward
+    if (heroUiRef.current) {
+      const heroUiOpacity = Math.max(0, Math.min(1, 1 - (progress - 0.06) / 0.12));
+      const heroUiTranslateY = Math.min(80, Math.max(0, (progress - 0.06) * 400));
+      heroUiRef.current.style.opacity = heroUiOpacity.toFixed(3);
+      heroUiRef.current.style.transform = `translate3d(0, -${heroUiTranslateY.toFixed(1)}px, 0)`;
+      heroUiRef.current.style.pointerEvents = heroUiOpacity > 0.08 ? "auto" : "none";
+    }
+
+    // 2. Canvas visibility: soft fade-in as user starts scrolling
+    if (canvasRef.current) {
+      const canvasOpacity = Math.min(1, Math.max(0.7, 0.7 + progress * 2));
+      canvasRef.current.style.opacity = canvasOpacity.toFixed(2);
+    }
+
+    // 3. Milestone 1: (18% - 42%)
+    if (milestone1Ref.current) {
+      const isVisible = progress > 0.18 && progress < 0.42;
+      milestone1Ref.current.style.opacity = isVisible ? "1" : "0";
+      milestone1Ref.current.style.transform = isVisible
+        ? "translate3d(0, 0, 0)"
+        : "translate3d(0, -16px, 0)";
+    }
+
+    // 4. Milestone 2: (48% - 72%)
+    if (milestone2Ref.current) {
+      const isVisible = progress > 0.48 && progress < 0.72;
+      milestone2Ref.current.style.opacity = isVisible ? "1" : "0";
+      milestone2Ref.current.style.transform = isVisible
+        ? "translate3d(0, 0, 0)"
+        : "translate3d(0, 16px, 0)";
+    }
+
+    // 5. Milestone 3: (76% - 94%)
+    if (milestone3Ref.current) {
+      const isVisible = progress > 0.76 && progress < 0.94;
+      milestone3Ref.current.style.opacity = isVisible ? "1" : "0";
+      milestone3Ref.current.style.transform = isVisible
+        ? "translate3d(0, 0, 0)"
+        : "translate3d(0, 16px, 0)";
+    }
+
+    // 6. Scroll prompt guidance (< 5%)
+    if (scrollPromptRef.current) {
+      const isVisible = progress < 0.05;
+      scrollPromptRef.current.style.opacity = isVisible ? "1" : "0";
+    }
+
+    // 7. Timeline / frame counter visibility (12% - 96%)
+    if (counterContainerRef.current) {
+      const isVisible = progress > 0.12 && progress < 0.96;
+      counterContainerRef.current.style.opacity = isVisible ? "1" : "0";
+    }
+  }, []);
+
   useEffect(() => {
     isComponentMountedRef.current = true;
     handleResize();
@@ -185,15 +254,16 @@ export default function SparshaUnifiedHero() {
       }
     });
 
-    // --- PHASE 2: Load initial burst of nearby frames (1 to 15) ---
-    for (let i = 1; i <= 15; i++) {
+    // --- PHASE 2: Load initial burst of nearby frames (1 to 12) ---
+    const initialBurst = isLowTier ? 6 : 12;
+    for (let i = 1; i <= initialBurst; i++) {
       loadSingleFrame(i);
     }
 
     // --- PHASE 3: Progressive non-blocking background preloader queue ---
     const preloadRestOfFrames = () => {
-      let currentIndex = 16;
-      const batchSize = 6;
+      let currentIndex = initialBurst + 1;
+      const batchSize = isLowTier ? 4 : 6;
 
       const loadNextBatch = () => {
         if (!isComponentMountedRef.current || currentIndex >= TOTAL_FRAMES) return;
@@ -210,9 +280,9 @@ export default function SparshaUnifiedHero() {
         Promise.all(promises).then(() => {
           if (!isComponentMountedRef.current) return;
           if (typeof window.requestIdleCallback !== "undefined") {
-            window.requestIdleCallback(loadNextBatch, { timeout: 80 });
+            window.requestIdleCallback(loadNextBatch, { timeout: isLowTier ? 120 : 80 });
           } else {
-            setTimeout(loadNextBatch, 35);
+            setTimeout(loadNextBatch, isLowTier ? 50 : 35);
           }
         });
       };
@@ -220,10 +290,11 @@ export default function SparshaUnifiedHero() {
       loadNextBatch();
     };
 
-    const bgPreloadTimeout = setTimeout(preloadRestOfFrames, 200);
+    const bgPreloadTimeout = setTimeout(preloadRestOfFrames, 250);
 
-    // --- SCROLL PROGRESS LISTENER ---
-    const updateScrollState = () => {
+    // --- HIGH-PERFORMANCE SCROLL PROGRESS LISTENER (RAF THROTTLED) ---
+    let scrollTicking = false;
+    const calculateProgress = () => {
       const section = sectionRef.current;
       if (!section) return;
 
@@ -239,13 +310,15 @@ export default function SparshaUnifiedHero() {
         Math.max(0, scrolledPastTop / totalScrollableDistance)
       );
 
-      setScrollProgress(progress);
+      scrollProgressRef.current = progress;
       targetFrameRef.current = progress * (TOTAL_FRAMES - 1);
+      updateScrollStyles(progress);
 
-      // Prioritize ±15 frames around the active user scroll position
+      // Prioritize nearby frames around active user scroll position
       const currentTarget = Math.round(targetFrameRef.current);
-      const start = Math.max(0, currentTarget - 15);
-      const end = Math.min(TOTAL_FRAMES - 1, currentTarget + 15);
+      const prefetchRadius = isLowTier ? 8 : 15;
+      const start = Math.max(0, currentTarget - prefetchRadius);
+      const end = Math.min(TOTAL_FRAMES - 1, currentTarget + prefetchRadius);
       for (let f = start; f <= end; f++) {
         if (!loadedFlagsRef.current[f]) {
           loadSingleFrame(f);
@@ -253,17 +326,29 @@ export default function SparshaUnifiedHero() {
       }
     };
 
+    const updateScrollState = () => {
+      if (!scrollTicking) {
+        window.requestAnimationFrame(() => {
+          calculateProgress();
+          scrollTicking = false;
+        });
+        scrollTicking = true;
+      }
+    };
+
     window.addEventListener("scroll", updateScrollState, { passive: true });
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
 
-    updateScrollState();
+    // Initial position calculation
+    calculateProgress();
 
-    // --- PERSISTENT RENDER LOOP ---
+    // --- INTERSECTION OBSERVER: PAUSE OFF-SCREEN ANIMATIONS ---
+    const smoothingFactor = isLowTier ? 0.25 : isMobile ? 0.20 : BASE_SMOOTHING_FACTOR;
     let lastRenderedIndex = -1;
 
     const renderLoop = () => {
-      if (!isComponentMountedRef.current) return;
+      if (!isComponentMountedRef.current || !isIntersectingRef.current) return;
 
       const target = targetFrameRef.current;
       const current = currentFrameRef.current;
@@ -273,7 +358,7 @@ export default function SparshaUnifiedHero() {
       } else {
         const diff = target - current;
         if (Math.abs(diff) > 0.001) {
-          currentFrameRef.current += diff * SMOOTHING_FACTOR;
+          currentFrameRef.current += diff * smoothingFactor;
         } else {
           currentFrameRef.current = target;
         }
@@ -287,11 +372,40 @@ export default function SparshaUnifiedHero() {
       if (frameIndex !== lastRenderedIndex) {
         renderClosestLoadedFrame(frameIndex);
         lastRenderedIndex = frameIndex;
+
+        if (counterTextRef.current) {
+          counterTextRef.current.textContent = String(frameIndex + 1).padStart(3, "0");
+        }
       }
 
       animationFrameIdRef.current = requestAnimationFrame(renderLoop);
     };
 
+    // Observer to pause canvas loop when hero section is not visible
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const wasIntersecting = isIntersectingRef.current;
+        isIntersectingRef.current = entry.isIntersecting;
+
+        if (entry.isIntersecting && !wasIntersecting) {
+          if (!animationFrameIdRef.current) {
+            animationFrameIdRef.current = requestAnimationFrame(renderLoop);
+          }
+        } else if (!entry.isIntersecting && wasIntersecting) {
+          if (animationFrameIdRef.current) {
+            cancelAnimationFrame(animationFrameIdRef.current);
+            animationFrameIdRef.current = null;
+          }
+        }
+      },
+      { rootMargin: "150px 0px" }
+    );
+
+    if (sectionRef.current) {
+      observer.observe(sectionRef.current);
+    }
+
+    // Start initial render loop
     animationFrameIdRef.current = requestAnimationFrame(renderLoop);
 
     return () => {
@@ -300,21 +414,20 @@ export default function SparshaUnifiedHero() {
       window.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
+      observer.disconnect();
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [handleResize, loadSingleFrame, renderClosestLoadedFrame, renderFrame]);
-
-  // Dynamic opacity and translateY for the initial Hero UI Layer
-  // 0% to 6% progress: 100% visible
-  // 6% to 18% progress: smoothly fades out and floats upward
-  const heroUiOpacity = Math.max(0, Math.min(1, 1 - (scrollProgress - 0.06) / 0.12));
-  const heroUiTranslateY = Math.min(80, Math.max(0, (scrollProgress - 0.06) * 400));
-  const heroUiPointerEvents = heroUiOpacity > 0.1 ? "pointer-events-auto" : "pointer-events-none";
-
-  // Canvas visibility: soft fade-in as user starts scrolling to transition seamlessly
-  const canvasOpacity = Math.min(1, Math.max(0.7, 0.7 + scrollProgress * 2));
+  }, [
+    handleResize,
+    isLowTier,
+    isMobile,
+    loadSingleFrame,
+    renderClosestLoadedFrame,
+    renderFrame,
+    updateScrollStyles,
+  ]);
 
   return (
     <section
@@ -332,8 +445,7 @@ export default function SparshaUnifiedHero() {
         {/* ======================================================== */}
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 block h-full w-full object-cover select-none pointer-events-none transition-opacity duration-500"
-          style={{ opacity: canvasOpacity }}
+          className="absolute inset-0 block h-full w-full object-cover select-none pointer-events-none transition-opacity duration-300 opacity-70"
         />
 
         {/* Soft edge ambient light vignette blending with the rest of the Sparsha theme */}
@@ -344,10 +456,11 @@ export default function SparshaUnifiedHero() {
         {/* Smoothly transitions out as user scrolls into the story  */}
         {/* ======================================================== */}
         <div
-          className={`absolute inset-0 z-20 flex flex-col justify-between overflow-y-auto lg:overflow-visible pt-24 sm:pt-28 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-opacity duration-300 ${heroUiPointerEvents}`}
+          ref={heroUiRef}
+          className="absolute inset-0 z-20 flex flex-col justify-between overflow-y-auto lg:overflow-visible pt-24 sm:pt-28 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-opacity duration-300 pointer-events-auto opacity-100"
           style={{
-            opacity: heroUiOpacity,
-            transform: `translate3d(0, -${heroUiTranslateY}px, 0)`,
+            transform: "translate3d(0, 0px, 0)",
+            willChange: "opacity, transform",
           }}
         >
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-8 items-center my-auto">
@@ -540,11 +653,9 @@ export default function SparshaUnifiedHero() {
         
         {/* Milestone 1: Beginning (20% - 42%) */}
         <div
-          className={`pointer-events-none absolute top-28 left-6 sm:left-12 max-w-sm transition-all duration-700 ${
-            scrollProgress > 0.18 && scrollProgress < 0.42
-              ? "opacity-100 translate-y-0"
-              : "opacity-0 -translate-y-4"
-          }`}
+          ref={milestone1Ref}
+          className="pointer-events-none absolute top-28 left-6 sm:left-12 max-w-sm transition-all duration-700 opacity-0 -translate-y-4"
+          style={{ willChange: "opacity, transform" }}
         >
           <div className="rounded-2xl border border-white/80 bg-white/80 p-5 shadow-card-wellness backdrop-blur-md">
             <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
@@ -562,11 +673,9 @@ export default function SparshaUnifiedHero() {
 
         {/* Milestone 2: Middle (48% - 72%) */}
         <div
-          className={`pointer-events-none absolute bottom-24 right-6 sm:right-12 max-w-sm transition-all duration-700 ${
-            scrollProgress > 0.48 && scrollProgress < 0.72
-              ? "opacity-100 translate-y-0"
-              : "opacity-0 translate-y-4"
-          }`}
+          ref={milestone2Ref}
+          className="pointer-events-none absolute bottom-24 right-6 sm:right-12 max-w-sm transition-all duration-700 opacity-0 translate-y-4"
+          style={{ willChange: "opacity, transform" }}
         >
           <div className="rounded-2xl border border-white/80 bg-white/80 p-5 shadow-card-wellness backdrop-blur-md text-right">
             <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
@@ -584,11 +693,9 @@ export default function SparshaUnifiedHero() {
 
         {/* Milestone 3: Finale (76% - 94%) */}
         <div
-          className={`pointer-events-none absolute bottom-24 left-6 sm:left-12 max-w-sm transition-all duration-700 ${
-            scrollProgress > 0.76 && scrollProgress < 0.94
-              ? "opacity-100 translate-y-0"
-              : "opacity-0 translate-y-4"
-          }`}
+          ref={milestone3Ref}
+          className="pointer-events-none absolute bottom-24 left-6 sm:left-12 max-w-sm transition-all duration-700 opacity-0 translate-y-4"
+          style={{ willChange: "opacity, transform" }}
         >
           <div className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-card-wellness backdrop-blur-md">
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
@@ -605,9 +712,8 @@ export default function SparshaUnifiedHero() {
 
         {/* Initial Scroll Prompt Guidance (fades out as soon as user begins scrolling) */}
         <div
-          className={`pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-500 ${
-            scrollProgress < 0.05 ? "opacity-100" : "opacity-0"
-          }`}
+          ref={scrollPromptRef}
+          className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-500 opacity-100"
         >
           <div className="flex flex-col items-center gap-1.5 rounded-full border border-white/80 bg-white/75 px-4 py-2 backdrop-blur-md shadow-sm">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#d81b60]">
@@ -619,19 +725,11 @@ export default function SparshaUnifiedHero() {
 
         {/* Minimal Frame / Timeline Counter (visible during cinematic phase) */}
         <div
-          className={`pointer-events-none absolute bottom-5 right-5 hidden sm:flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-[10px] font-mono text-[#5a424f] backdrop-blur-md border border-white/80 transition-opacity duration-500 ${
-            scrollProgress > 0.12 && scrollProgress < 0.96
-              ? "opacity-100"
-              : "opacity-0"
-          }`}
+          ref={counterContainerRef}
+          className="pointer-events-none absolute bottom-5 right-5 hidden sm:flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-[10px] font-mono text-[#5a424f] backdrop-blur-md border border-white/80 transition-opacity duration-500 opacity-0"
         >
-          <span className="text-[#d81b60] font-semibold">
-            {String(
-              Math.min(
-                TOTAL_FRAMES,
-                Math.max(1, Math.round(currentFrameRef.current) + 1)
-              )
-            ).padStart(3, "0")}
+          <span ref={counterTextRef} className="text-[#d81b60] font-semibold">
+            001
           </span>
           <span>/</span>
           <span>{TOTAL_FRAMES}</span>

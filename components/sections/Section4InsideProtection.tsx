@@ -4,10 +4,12 @@ import React, { useRef } from "react";
 import Image from "next/image";
 import { motion, useScroll, useTransform, useReducedMotion } from "framer-motion";
 import { Sparkles, Heart } from "lucide-react";
+import { useAdaptivePerformance } from "@/hooks/useAdaptivePerformance";
 
 export default function Section4InsideProtection() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
+  const { isLowTier, parallaxScale } = useAdaptivePerformance();
 
   // Scroll tracking for subtle parallax
   const { scrollYProgress } = useScroll({
@@ -15,8 +17,8 @@ export default function Section4InsideProtection() {
     offset: ["start end", "end start"],
   });
 
-  // Smooth subtle parallax offset
-  const parallaxY = useTransform(scrollYProgress, [0, 1], [-25, 25]);
+  // Smooth subtle parallax offset adapted by performance tier
+  const parallaxY = useTransform(scrollYProgress, [0, 1], [-25 * parallaxScale, 25 * parallaxScale]);
 
   return (
     <section
@@ -24,10 +26,20 @@ export default function Section4InsideProtection() {
       ref={sectionRef}
       className="relative w-full min-h-screen bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf0f4] py-20 sm:py-28 lg:py-32 px-4 sm:px-6 lg:px-8 border-t border-[#f5e4e8] overflow-hidden flex flex-col justify-center items-center"
     >
-      {/* Soft atmospheric ambient background light */}
+      {/* Soft atmospheric ambient background light (GPU single-pass radial gradients) */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-        <div className="h-[550px] w-[550px] sm:h-[700px] sm:w-[700px] rounded-full bg-[#fce7ec]/80 blur-[130px]" />
-        <div className="absolute -bottom-20 right-1/4 h-[400px] w-[400px] rounded-full bg-[#fae5ed]/60 blur-3xl" />
+        <div
+          className="h-[550px] w-[550px] sm:h-[700px] sm:w-[700px] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(252,231,236,0.75) 0%, rgba(250,237,241,0.25) 45%, transparent 70%)",
+          }}
+        />
+        <div
+          className="absolute -bottom-20 right-1/4 h-[400px] w-[400px] rounded-full"
+          style={{
+            background: "radial-gradient(circle, rgba(250,229,237,0.6) 0%, rgba(250,229,237,0.15) 45%, transparent 70%)",
+          }}
+        />
       </div>
 
       <div className="relative z-10 w-full max-w-6xl mx-auto flex flex-col items-center justify-center text-center">
@@ -60,18 +72,18 @@ export default function Section4InsideProtection() {
           whileInView={{ opacity: 1, scale: 1, y: 0 }}
           viewport={{ once: false, amount: 0.2, margin: "-60px" }}
           transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
-          style={{ y: shouldReduceMotion ? 0 : parallaxY }}
+          style={{ y: shouldReduceMotion || isLowTier ? 0 : parallaxY }}
           className="relative w-full max-w-5xl flex justify-center items-center"
         >
           {/* Subtle Floating, Breathing & Parallax Motion Wrapper */}
           <motion.div
             animate={
-              shouldReduceMotion
+              shouldReduceMotion || isLowTier
                 ? {}
                 : {
-                    y: [0, -10, 0],
-                    scale: [1, 1.015, 1],
-                    rotate: [0, 0.4, -0.4, 0],
+                    y: [0, -8, 0],
+                    scale: [1, 1.012, 1],
+                    rotate: [0, 0.3, -0.3, 0],
                   }
             }
             transition={{
