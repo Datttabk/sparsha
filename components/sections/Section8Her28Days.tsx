@@ -90,7 +90,7 @@ export default function Section8Her28Days() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: false, amount: 0.2, margin: "-80px" }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative w-[320px] h-[320px] sm:w-[420px] sm:h-[420px] lg:w-[450px] lg:h-[450px] flex items-center justify-center"
+              className="relative w-[280px] h-[280px] min-[360px]:w-[320px] min-[360px]:h-[320px] sm:w-[420px] sm:h-[420px] lg:w-[450px] lg:h-[450px] flex items-center justify-center"
             >
               {/* Outer Decorative Glow Ring */}
               <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-pink-200/40 via-white to-rose-200/30 blur-xl pointer-events-none" />
@@ -105,7 +105,7 @@ export default function Section8Her28Days() {
                     style={{ left: cat.left, top: cat.top }}
                   >
                     {/* Counter-rotate inside to keep label upright and readable */}
-                    <div className="animate-[spin_65s_linear_infinite_reverse] motion-reduce:animate-none flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[9px] sm:text-[10px] font-bold text-[#6b4759] shadow-sm border border-rose-100 backdrop-blur-sm whitespace-nowrap">
+                    <div className="animate-[spin_65s_linear_infinite_reverse] motion-reduce:animate-none flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 min-[360px]:px-2.5 min-[360px]:py-1 text-[8px] min-[360px]:text-[9px] sm:text-[10px] font-bold text-[#6b4759] shadow-sm border border-rose-100 backdrop-blur-sm whitespace-nowrap">
                       {cat.icon}
                       <span>{cat.name}</span>
                     </div>
@@ -140,8 +140,8 @@ export default function Section8Her28Days() {
               ))}
 
               {/* VISUALLY STABLE CENTER HUB — OFFICIAL HER28DAYS LOGO */}
-              <div className="relative z-20 flex flex-col items-center justify-center text-center rounded-full bg-white p-6 shadow-card-wellness border-2 border-white/95 h-44 w-44 sm:h-52 sm:w-52 overflow-hidden">
-                <div className="relative w-24 h-24 sm:w-28 sm:h-28 mb-1 rounded-2xl overflow-hidden shadow-xs">
+              <div className="relative z-20 flex flex-col items-center justify-center text-center rounded-full bg-white p-4 sm:p-6 shadow-card-wellness border-2 border-white/95 h-36 w-36 min-[360px]:h-44 min-[360px]:w-44 sm:h-52 sm:w-52 overflow-hidden">
+                <div className="relative w-20 h-20 sm:w-28 sm:h-28 mb-1 rounded-2xl overflow-hidden shadow-xs">
                   <Image
                     src="/assets/sparsha-logo.png"
                     alt="Sparsha Official Logo"
@@ -151,7 +151,7 @@ export default function Section8Her28Days() {
                     className="object-contain"
                   />
                 </div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-[#d81b60] mt-0.5">
+                <span className="text-[9px] min-[360px]:text-[10px] uppercase font-bold tracking-widest text-[#d81b60] mt-0.5">
                   28 Day Cycle
                 </span>
               </div>
@@ -164,7 +164,7 @@ export default function Section8Her28Days() {
                 <button
                   key={p.id}
                   onClick={() => setActivePhase(idx)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3.5 py-2 min-h-[40px] sm:min-h-[44px] inline-flex items-center justify-center rounded-full text-xs font-semibold transition-all ${
                     activePhase === idx
                       ? "bg-[#d81b60] text-white shadow-sm"
                       : "bg-white/80 text-[#5a424f] hover:bg-white border border-[#f5e4e8]"

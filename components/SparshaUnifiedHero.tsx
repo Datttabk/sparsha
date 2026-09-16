@@ -73,8 +73,15 @@ export default function SparshaUnifiedHero() {
   const lastFpsTimeRef = useRef<number>(0);
 
   // Adaptive performance tiering
-  const { dprCap, isLowTier, isMobile } = useAdaptivePerformance();
-  const maxConcurrency = isLowTier ? 3 : isMobile ? 4 : 5;
+  const {
+    dprCap,
+    isLowTier,
+    isMobile,
+    maxConcurrency,
+    maxCacheSize,
+    preloadForward,
+    preloadBackward,
+  } = useAdaptivePerformance();
 
   // Draw an image directly to canvas using high-performance cover math (No clearRect)
   const paintToCanvas = useCallback(
@@ -220,9 +227,9 @@ export default function SparshaUnifiedHero() {
     const displayWidth = window.innerWidth;
     const displayHeight = window.innerHeight;
 
-    // Use physical screen DPR (capped at 2.0 for Retina 1:1 sharpness, 1.0-1.25 on low-tier)
+    // Use physical screen DPR capped responsively by device tier (2.0 desktop, 1.5 mobile, 1.0 low-tier)
     const rawDpr = window.devicePixelRatio || 1;
-    const effectiveDpr = Math.min(rawDpr, isLowTier ? 1.0 : 2.0);
+    const effectiveDpr = Math.min(rawDpr, dprCap);
 
     const bufferWidth = Math.round(displayWidth * effectiveDpr);
     const bufferHeight = Math.round(displayHeight * effectiveDpr);
@@ -318,7 +325,7 @@ export default function SparshaUnifiedHero() {
     [paintToCanvas]
   );
 
-  // Direction-aware, prioritized preloader queue with bounded concurrency
+  // Direction-aware, prioritized preloader queue with bounded concurrency & adaptive memory eviction
   const processQueue = useCallback(() => {
     if (!isComponentMountedRef.current) return;
 
@@ -326,6 +333,31 @@ export default function SparshaUnifiedHero() {
     const dir = scrollDirectionRef.current; // 1 (down) or -1 (up)
     const loaded = loadedFlagsRef.current;
     const inFlight = inFlightFlagsRef.current;
+
+    // --- Adaptive Frame Eviction: Prevent mobile Safari/Chrome OOM crashes ---
+    if (maxCacheSize < TOTAL_FRAMES) {
+      const loadedIndices: number[] = [];
+      for (let i = 0; i < TOTAL_FRAMES; i++) {
+        if (loaded[i]) loadedIndices.push(i);
+      }
+      if (loadedIndices.length > maxCacheSize) {
+        // Sort by distance from target descending (farthest frames first)
+        loadedIndices.sort((a, b) => Math.abs(b - target) - Math.abs(a - target));
+        const evictCount = loadedIndices.length - maxCacheSize;
+        for (let i = 0; i < evictCount; i++) {
+          const evictIdx = loadedIndices[i];
+          // Never evict target or immediate neighbors (±2)
+          if (Math.abs(evictIdx - target) > 2) {
+            const item = bitmapCacheRef.current[evictIdx];
+            if (item && "close" in item && typeof item.close === "function") {
+              item.close();
+            }
+            bitmapCacheRef.current[evictIdx] = null;
+            loadedFlagsRef.current[evictIdx] = false;
+          }
+        }
+      }
+    }
 
     const candidates: number[] = [];
     const added = new Set<number>();
@@ -340,25 +372,22 @@ export default function SparshaUnifiedHero() {
     // 1. Current target frame
     addCandidate(target);
 
-    // 2. High priority directional lookahead (next 25 frames in scroll direction)
-    for (let i = 1; i <= 25; i++) {
+    // 2. High priority directional lookahead
+    for (let i = 1; i <= preloadForward; i++) {
       addCandidate(target + i * dir);
     }
 
-    // 3. Backward safety buffer (past 6 frames behind scroll direction)
-    for (let i = 1; i <= 6; i++) {
+    // 3. Backward safety buffer
+    for (let i = 1; i <= preloadBackward; i++) {
       addCandidate(target - i * dir);
     }
 
-    // 4. Extended directional lookahead (frames 26 to 60)
-    for (let i = 26; i <= 60; i++) {
-      addCandidate(target + i * dir);
-    }
-
-    // 5. Outward progressive caching of the entire 300 sequence
-    for (let offset = 1; offset < TOTAL_FRAMES; offset++) {
-      addCandidate(target + offset * dir);
-      addCandidate(target - offset * dir);
+    // 4. Extended outward caching on high-end desktop/laptop only
+    if (!isMobile && !isLowTier) {
+      for (let offset = preloadForward + 1; offset < TOTAL_FRAMES; offset++) {
+        addCandidate(target + offset * dir);
+        addCandidate(target - offset * dir);
+      }
     }
 
     // Dispatch requests up to maximum bounded concurrency
@@ -371,7 +400,15 @@ export default function SparshaUnifiedHero() {
         loadSingleFrame(idx);
       }
     }
-  }, [loadSingleFrame, maxConcurrency]);
+  }, [
+    isLowTier,
+    isMobile,
+    loadSingleFrame,
+    maxCacheSize,
+    maxConcurrency,
+    preloadBackward,
+    preloadForward,
+  ]);
 
   // Keep processQueue ref fresh
   useEffect(() => {
@@ -647,12 +684,11 @@ export default function SparshaUnifiedHero() {
     <section
       id="home"
       ref={sectionRef}
-      className="scroll-mt-24 relative w-full bg-[#fdf8f9] text-[#281920]"
-      style={{ height: "550vh" }}
+      className="scroll-mt-24 relative w-full bg-[#fdf8f9] text-[#281920] h-[360vh] sm:h-[450vh] lg:h-[550vh]"
       aria-label="Sparsha Hero & Cinematic Story Experience"
     >
       {/* Sticky Fullscreen Viewport Container */}
-      <div className="sticky top-0 left-0 h-screen w-full overflow-hidden bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf2f5]">
+      <div className="sticky top-0 left-0 h-[100svh] min-h-[100svh] sm:h-screen w-full overflow-hidden bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf2f5]">
         
         {/* ======================================================== */}
         {/* LAYER 1: Full-Bleed Direct Canvas (100% Source Clarity)  */}
@@ -673,7 +709,7 @@ export default function SparshaUnifiedHero() {
         {/* ======================================================== */}
         <div
           ref={heroUiRef}
-          className="absolute inset-0 z-20 flex flex-col justify-between overflow-y-auto lg:overflow-visible pt-24 sm:pt-28 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-opacity duration-300 pointer-events-auto opacity-100"
+          className="absolute inset-0 z-20 flex flex-col justify-between overflow-hidden lg:overflow-visible pt-20 sm:pt-28 pb-6 sm:pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto transition-opacity duration-300 pointer-events-auto opacity-100"
           style={{
             transform: "translate3d(0, 0px, 0)",
             willChange: "opacity, transform",
@@ -685,14 +721,14 @@ export default function SparshaUnifiedHero() {
             <div className="lg:col-span-5 flex flex-col justify-center">
               {/* Eyebrow Brand Tag */}
               <div className="inline-flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-[#d81b60]">
+                <span className="text-[10px] min-[360px]:text-[11px] font-bold uppercase tracking-[0.22em] text-[#d81b60]">
                   Care Today, A Healthier Tomorrow
                 </span>
               </div>
 
               {/* Main Editorial Headline */}
-              <div className="mt-4">
-                <h1 className="font-serif text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] text-[#281920]">
+              <div className="mt-2.5 sm:mt-4">
+                <h1 className="font-serif text-3xl min-[360px]:text-4xl min-[414px]:text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.08] text-[#281920]">
                   Move Freely.
                   <br />
                   <span className="text-[#d81b60] drop-shadow-[0_2px_15px_rgba(216,27,96,0.12)]">
@@ -702,7 +738,7 @@ export default function SparshaUnifiedHero() {
               </div>
 
               {/* Decorative Divider with Center Lotus Flower Icon */}
-              <div className="mt-5 flex items-center gap-3 max-w-md">
+              <div className="mt-3 sm:mt-5 flex items-center gap-3 max-w-md">
                 <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-[#e5b6c5] to-[#d81b60]/40" />
                 <div className="relative flex items-center justify-center text-[#d81b60]">
                   <svg
@@ -728,17 +764,17 @@ export default function SparshaUnifiedHero() {
               </div>
 
               {/* Supporting Text */}
-              <p className="mt-4 text-lg sm:text-xl font-normal text-[#4f3844] max-w-md leading-relaxed">
+              <p className="mt-2.5 sm:mt-4 text-sm min-[360px]:text-base sm:text-xl font-normal text-[#4f3844] max-w-md leading-relaxed">
                 Comfort that keeps up with every move.
               </p>
 
               {/* Feature Icons Strip */}
-              <div className="mt-6 flex items-center gap-6 sm:gap-8 max-w-md">
+              <div className="mt-4 sm:mt-6 flex items-center gap-4 sm:gap-8 max-w-md">
                 <div className="flex flex-col items-center text-center group cursor-pointer">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
-                    <Leaf className="h-5 w-5 stroke-[1.5]" />
+                  <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
+                    <Leaf className="h-4 w-4 sm:h-5 sm:w-5 stroke-[1.5]" />
                   </div>
-                  <span className="mt-1.5 text-xs font-semibold text-[#4a3540] leading-tight">
+                  <span className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs font-semibold text-[#4a3540] leading-tight">
                     Super Soft
                     <br />
                     Comfort
@@ -746,10 +782,10 @@ export default function SparshaUnifiedHero() {
                 </div>
 
                 <div className="flex flex-col items-center text-center group cursor-pointer">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
-                    <ShieldCheck className="h-5 w-5 stroke-[1.5]" />
+                  <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
+                    <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5 stroke-[1.5]" />
                   </div>
-                  <span className="mt-1.5 text-xs font-semibold text-[#4a3540] leading-tight">
+                  <span className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs font-semibold text-[#4a3540] leading-tight">
                     Reliable
                     <br />
                     Protection
@@ -757,10 +793,10 @@ export default function SparshaUnifiedHero() {
                 </div>
 
                 <div className="flex flex-col items-center text-center group cursor-pointer">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
-                    <Flower2 className="h-5 w-5 stroke-[1.5]" />
+                  <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-[#e89db4] bg-white/90 backdrop-blur-sm text-[#d81b60] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:border-[#d81b60]">
+                    <Flower2 className="h-4 w-4 sm:h-5 sm:w-5 stroke-[1.5]" />
                   </div>
-                  <span className="mt-1.5 text-xs font-semibold text-[#4a3540] leading-tight">
+                  <span className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs font-semibold text-[#4a3540] leading-tight">
                     Gentle on
                     <br />
                     Skin
@@ -769,25 +805,25 @@ export default function SparshaUnifiedHero() {
               </div>
 
               {/* Action Buttons */}
-              <div className="mt-6 flex flex-wrap items-center gap-3.5">
+              <div className="mt-4 sm:mt-6 flex flex-wrap items-center gap-2.5 sm:gap-3.5">
                 <a
                   href="#explore"
-                  className="group relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#d81b60] via-[#c2185b] to-[#ad1457] px-6 py-3 text-sm font-semibold text-white shadow-soft-pink transition-all duration-300 hover:shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:translate-y-0"
+                  className="group relative inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#d81b60] via-[#c2185b] to-[#ad1457] px-4 py-2.5 sm:px-6 sm:py-3 text-xs sm:text-sm font-semibold text-white shadow-soft-pink transition-all duration-300 hover:shadow-lg hover:brightness-105 hover:-translate-y-0.5 active:translate-y-0 min-h-[44px]"
                 >
                   <span>Explore Sparsha</span>
-                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                  <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </a>
 
                 <a
                   href="#products"
-                  className="inline-flex items-center gap-2 rounded-full border border-[#d81b60]/30 bg-white/80 px-5 py-3 text-sm font-medium text-[#4a3540] backdrop-blur-sm transition-all duration-300 hover:bg-[#faebee] hover:border-[#d81b60] hover:text-[#d81b60]"
+                  className="inline-flex items-center gap-2 rounded-full border border-[#d81b60]/30 bg-white/80 px-4 py-2.5 sm:px-5 sm:py-3 text-xs sm:text-sm font-medium text-[#4a3540] backdrop-blur-sm transition-all duration-300 hover:bg-[#faebee] hover:border-[#d81b60] hover:text-[#d81b60] min-h-[44px]"
                 >
                   <span>Discover Our Products</span>
                 </a>
               </div>
 
-              {/* Product Display: Pedestal with Blue Sparsha Box & Pad */}
-              <div className="mt-8 relative max-w-sm">
+              {/* Product Display: Pedestal with Blue Sparsha Box & Pad (Desktop / Large screen) */}
+              <div className="hidden lg:block mt-8 relative max-w-sm">
                 <div className="relative rounded-2xl overflow-hidden shadow-card-wellness border border-white/90 bg-white/60 backdrop-blur-sm">
                   <div className="relative aspect-[4/3] w-full">
                     <Image
@@ -806,8 +842,8 @@ export default function SparshaUnifiedHero() {
               </div>
             </div>
 
-            {/* Right Column: 55-58% width */}
-            <div className="lg:col-span-7 relative flex justify-center lg:justify-end">
+            {/* Right Column: 55-58% width (Desktop / Large screen) */}
+            <div className="hidden lg:flex lg:col-span-7 relative justify-center lg:justify-end">
               <div className="relative w-full max-w-xl">
                 <div className="absolute -inset-3 rounded-3xl bg-gradient-to-tr from-[#fbcfe8]/40 via-[#fde047]/10 to-[#fed7aa]/30 blur-2xl opacity-70 -z-10" />
 
@@ -870,15 +906,15 @@ export default function SparshaUnifiedHero() {
         {/* Milestone 1: Beginning (20% - 42%) */}
         <div
           ref={milestone1Ref}
-          className="pointer-events-none absolute top-28 left-6 sm:left-12 max-w-sm transition-all duration-700 opacity-0 -translate-y-4"
+          className="pointer-events-none absolute top-24 sm:top-28 left-4 right-4 sm:left-12 sm:right-auto max-w-sm transition-all duration-700 opacity-0 -translate-y-4"
           style={{ willChange: "opacity, transform" }}
         >
-          <div className="rounded-2xl border border-white/80 bg-white/80 p-5 shadow-card-wellness backdrop-blur-md">
+          <div className="rounded-2xl border border-white/80 bg-white/80 p-4 sm:p-5 shadow-card-wellness backdrop-blur-md">
             <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
               <Sparkles className="h-3.5 w-3.5 text-[#d81b60]" />
               <span>Unrestricted Freedom</span>
             </div>
-            <h3 className="mt-2 font-serif text-2xl font-bold text-[#281920] leading-snug">
+            <h3 className="mt-2 font-serif text-xl sm:text-2xl font-bold text-[#281920] leading-snug">
               Designed for every stride, leap, and dream.
             </h3>
             <p className="mt-1.5 text-xs text-[#5a424f] leading-relaxed">
@@ -890,15 +926,15 @@ export default function SparshaUnifiedHero() {
         {/* Milestone 2: Middle (48% - 72%) */}
         <div
           ref={milestone2Ref}
-          className="pointer-events-none absolute bottom-24 right-6 sm:right-12 max-w-sm transition-all duration-700 opacity-0 translate-y-4"
+          className="pointer-events-none absolute bottom-20 sm:bottom-24 right-4 left-4 sm:left-auto sm:right-12 max-w-sm transition-all duration-700 opacity-0 translate-y-4"
           style={{ willChange: "opacity, transform" }}
         >
-          <div className="rounded-2xl border border-white/80 bg-white/80 p-5 shadow-card-wellness backdrop-blur-md text-right">
+          <div className="rounded-2xl border border-white/80 bg-white/80 p-4 sm:p-5 shadow-card-wellness backdrop-blur-md text-left sm:text-right">
             <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
               <span>Pure Cloud Softness</span>
               <span className="h-2 w-2 rounded-full bg-[#d81b60] animate-ping" />
             </div>
-            <h3 className="mt-2 font-serif text-2xl font-bold text-[#281920] leading-snug">
+            <h3 className="mt-2 font-serif text-xl sm:text-2xl font-bold text-[#281920] leading-snug">
               Gentle like petals against your skin.
             </h3>
             <p className="mt-1.5 text-xs text-[#5a424f] leading-relaxed">
@@ -910,14 +946,14 @@ export default function SparshaUnifiedHero() {
         {/* Milestone 3: Finale (76% - 94%) */}
         <div
           ref={milestone3Ref}
-          className="pointer-events-none absolute bottom-24 left-6 sm:left-12 max-w-sm transition-all duration-700 opacity-0 translate-y-4"
+          className="pointer-events-none absolute bottom-20 sm:bottom-24 left-4 right-4 sm:left-12 sm:right-auto max-w-sm transition-all duration-700 opacity-0 translate-y-4"
           style={{ willChange: "opacity, transform" }}
         >
-          <div className="rounded-2xl border border-white/80 bg-white/85 p-5 shadow-card-wellness backdrop-blur-md">
+          <div className="rounded-2xl border border-white/80 bg-white/85 p-4 sm:p-5 shadow-card-wellness backdrop-blur-md">
             <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#d81b60]">
               Swasth Mahila, Swasth Bharat
             </div>
-            <h3 className="mt-2 font-serif text-2xl sm:text-3xl font-bold text-[#281920] leading-snug">
+            <h3 className="mt-2 font-serif text-xl sm:text-2xl lg:text-3xl font-bold text-[#281920] leading-snug">
               Move Freely. Live Fully.
             </h3>
             <p className="mt-1.5 text-xs text-[#5a424f] leading-relaxed">

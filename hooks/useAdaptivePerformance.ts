@@ -11,6 +11,10 @@ export interface AdaptivePerformance {
   dprCap: number;
   parallaxScale: number;
   reduceBlur: boolean;
+  maxCacheSize: number;
+  preloadForward: number;
+  preloadBackward: number;
+  maxConcurrency: number;
 }
 
 export function useAdaptivePerformance(): AdaptivePerformance {
@@ -21,6 +25,10 @@ export function useAdaptivePerformance(): AdaptivePerformance {
     dprCap: 2,
     parallaxScale: 1,
     reduceBlur: false,
+    maxCacheSize: 300,
+    preloadForward: 28,
+    preloadBackward: 8,
+    maxConcurrency: 5,
   });
 
   useEffect(() => {
@@ -51,9 +59,18 @@ export function useAdaptivePerformance(): AdaptivePerformance {
     }
 
     const isLowTier = tier === "low";
-    const dprCap = tier === "low" ? 1.25 : tier === "medium" ? 1.5 : 2.0;
-    const parallaxScale = tier === "low" ? 0.25 : tier === "medium" ? 0.6 : 1.0;
-    const reduceBlur = tier !== "high";
+    const dprCap = isLowTier ? 1.25 : isMobile ? 1.5 : 2.0;
+    const parallaxScale = isLowTier ? 0.2 : isMobile ? 0.4 : 1.0;
+    const reduceBlur = isLowTier || isMobile;
+
+    // Adaptive memory limits:
+    // Low tier / small mobile: 45 frames (prevents OOM / GC pauses, RAM < 150MB)
+    // Medium tier / tablet: 80 frames
+    // High tier / desktop: 300 frames (entire sequence)
+    const maxCacheSize = isLowTier ? 45 : isMobile ? 55 : tier === "medium" ? 90 : 300;
+    const preloadForward = isLowTier ? 12 : isMobile ? 18 : 28;
+    const preloadBackward = isLowTier ? 4 : isMobile ? 6 : 8;
+    const maxConcurrency = isLowTier ? 3 : isMobile ? 4 : 5;
 
     setPerf({
       tier,
@@ -62,6 +79,10 @@ export function useAdaptivePerformance(): AdaptivePerformance {
       dprCap,
       parallaxScale,
       reduceBlur,
+      maxCacheSize,
+      preloadForward,
+      preloadBackward,
+      maxConcurrency,
     });
   }, []);
 

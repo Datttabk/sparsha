@@ -63,9 +63,19 @@ export default function SparshaNavbar() {
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+
     window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("keydown", handleKeyDown);
     updateActiveSection();
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, []);
 
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
@@ -159,51 +169,66 @@ export default function SparshaNavbar() {
             </a>
           </div>
 
-          {/* Mobile Menu Toggle */}
+          {/* Mobile Menu Toggle (44px min touch target) */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-2 text-[#4a3540] hover:text-[#d81b60] focus:outline-none"
+            className="lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-[#4a3540] hover:text-[#d81b60] hover:bg-rose-50/80 active:scale-95 transition-all focus:outline-none"
             aria-label="Toggle navigation menu"
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Drawer Menu with Click-Outside Backdrop */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-b border-[#f5e4e8] bg-[#fdf8f9]/98 px-6 py-5 shadow-lg backdrop-blur-xl animate-fade-in">
-          <div className="flex flex-col gap-4 text-base font-medium text-[#4a3540]">
-            {navItems.map((item) => {
-              const isActive = activeSection === item.id;
-              return (
-                <a
-                  key={item.id}
-                  href={item.href}
-                  onClick={(e) => handleNavClick(e, item.id)}
-                  className={`py-1 transition-colors flex items-center justify-between ${
-                    isActive
-                      ? "text-[#d81b60] font-semibold border-b border-[#faebee]"
-                      : "text-[#4a3540] hover:text-[#d81b60]"
-                  }`}
-                >
-                  <span>{item.name}</span>
-                  {isActive && <span className="h-2 w-2 rounded-full bg-[#d81b60]" />}
-                </a>
-              );
-            })}
+        <>
+          <div
+            className="fixed inset-0 -z-10 bg-black/20 backdrop-blur-xs"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="lg:hidden border-b border-[#f5e4e8] bg-[#fdf8f9]/98 px-5 py-5 shadow-xl backdrop-blur-2xl animate-fade-in max-h-[calc(100svh-5rem)] overflow-y-auto">
+            <nav className="flex flex-col gap-1 text-base font-medium text-[#4a3540]" aria-label="Mobile navigation">
+              {navItems.map((item) => {
+                const isActive = activeSection === item.id;
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    onClick={(e) => handleNavClick(e, item.id)}
+                    className={`min-h-[44px] px-3.5 py-2.5 rounded-xl transition-all flex items-center justify-between ${
+                      isActive
+                        ? "text-[#d81b60] font-semibold bg-[#faebee]/80"
+                        : "text-[#4a3540] hover:text-[#d81b60] hover:bg-rose-50/50"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      {item.name}
+                      {item.hasBadge && (
+                        <span className="text-[10px] font-bold text-white bg-[#d81b60] px-2 py-0.5 rounded-full">
+                          28 Days
+                        </span>
+                      )}
+                    </span>
+                    {isActive && <span className="h-2 w-2 rounded-full bg-[#d81b60]" />}
+                  </a>
+                );
+              })}
 
-            <div className="pt-3 border-t border-[#f5e4e8] flex flex-col gap-3">
-              <a
-                href="#products"
-                onClick={(e) => handleNavClick(e, "products")}
-                className="w-full text-center rounded-full bg-[#d81b60] py-3 text-sm font-semibold text-white shadow-soft-pink"
-              >
-                Explore Sparsha →
-              </a>
-            </div>
+              <div className="pt-3 mt-2 border-t border-[#f5e4e8] flex flex-col gap-3">
+                <a
+                  href="#products"
+                  onClick={(e) => handleNavClick(e, "products")}
+                  className="w-full min-h-[44px] flex items-center justify-center rounded-full bg-gradient-to-r from-[#d81b60] to-[#c2185b] py-3 text-sm font-semibold text-white shadow-soft-pink hover:brightness-105 active:scale-[0.99] transition-all"
+                >
+                  Explore Sparsha Collection →
+                </a>
+              </div>
+            </nav>
           </div>
-        </div>
+        </>
       )}
     </header>
   );

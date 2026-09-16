@@ -49,21 +49,21 @@ export default function AmbientBackground() {
       {/* Dynamic Ambient Gradient Glows (GPU Single-Pass Radial Gradients) */}
       <motion.div
         style={{
-          y: isLowTier ? 0 : orb1Y,
+          y: isLowTier || isMobile ? 0 : orb1Y,
           background: "radial-gradient(circle, rgba(252,231,236,0.65) 0%, rgba(250,237,241,0.35) 45%, transparent 70%)",
         }}
         className="absolute -top-24 -left-24 h-[550px] w-[550px] rounded-full"
       />
       <motion.div
         style={{
-          y: isLowTier ? 0 : orb2Y,
+          y: isLowTier || isMobile ? 0 : orb2Y,
           background: "radial-gradient(circle, rgba(251,220,229,0.55) 0%, rgba(252,240,244,0.3) 45%, transparent 70%)",
         }}
         className="absolute top-1/2 -right-32 h-[600px] w-[600px] rounded-full"
       />
       <motion.div
         style={{
-          y: isLowTier ? 0 : orb3Y,
+          y: isLowTier || isMobile ? 0 : orb3Y,
           background: "radial-gradient(circle, rgba(250,235,238,0.6) 0%, rgba(253,242,245,0.25) 45%, transparent 70%)",
         }}
         className="absolute -bottom-32 left-1/4 h-[500px] w-[500px] rounded-full"
@@ -71,7 +71,7 @@ export default function AmbientBackground() {
 
       {/* Floating Botanical Rose Petal 1 (Top Right) */}
       <motion.div
-        style={{ y: isLowTier ? 0 : petal1Y }}
+        style={{ y: isLowTier || isMobile ? 0 : petal1Y }}
         className="absolute top-24 right-[12%] opacity-35"
       >
         <svg
@@ -96,7 +96,7 @@ export default function AmbientBackground() {
 
       {/* Floating Botanical Rose Petal 2 (Mid Left) */}
       <motion.div
-        style={{ y: isLowTier ? 0 : petal2Y }}
+        style={{ y: isLowTier || isMobile ? 0 : petal2Y }}
         className="absolute top-[48%] left-[7%] opacity-30"
       >
         <svg
