@@ -446,12 +446,28 @@ export default function SparshaUnifiedHero() {
       observer.observe(sectionRef.current);
     }
 
+    // Tab visibility handling: pause render loop when tab is hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationFrameIdRef.current) {
+          cancelAnimationFrame(animationFrameIdRef.current);
+          animationFrameIdRef.current = null;
+        }
+      } else if (isIntersectingRef.current && isComponentMountedRef.current) {
+        if (!animationFrameIdRef.current) {
+          animationFrameIdRef.current = requestAnimationFrame(renderLoop);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // Start initial render loop
     animationFrameIdRef.current = requestAnimationFrame(renderLoop);
 
     return () => {
       isComponentMountedRef.current = false;
       clearTimeout(bgPreloadTimeout);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
