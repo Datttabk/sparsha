@@ -38,6 +38,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${playfair.variable} ${jakarta.variable} h-full antialiased`}>
+      <head>
+        <link
+          rel="preload"
+          as="image"
+          href="/frames/ezgif-frame-001.jpg"
+          fetchPriority="high"
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-[#fdf8f9] text-[#281920]">
         {children}
       </body>

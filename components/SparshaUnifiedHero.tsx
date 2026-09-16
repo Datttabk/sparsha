@@ -14,10 +14,10 @@ import {
 import { useAdaptivePerformance } from "@/hooks/useAdaptivePerformance";
 
 const TOTAL_FRAMES = 300;
-const SOURCE_WIDTH = 1280;
-const SOURCE_HEIGHT = 720;
-const MAX_CANVAS_WIDTH = 1920;
-const MAX_CANVAS_HEIGHT = 1080;
+const SOURCE_WIDTH = 2544;
+const SOURCE_HEIGHT = 1440;
+const MAX_CANVAS_WIDTH = 2544;
+const MAX_CANVAS_HEIGHT = 1440;
 
 // Programmatically generate zero-padded frame paths (001 -> 300)
 const getFramePath = (index: number): string => {
@@ -28,6 +28,7 @@ const getFramePath = (index: number): string => {
 export default function SparshaUnifiedHero() {
   const sectionRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const posterRef = useRef<HTMLDivElement>(null);
 
   // Direct DOM refs for zero-re-render scroll transitions
   const heroUiRef = useRef<HTMLDivElement>(null);
@@ -56,8 +57,9 @@ export default function SparshaUnifiedHero() {
   const inFlightFlagsRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
   const activeLoadsRef = useRef<number>(0);
 
-  // Process queue ref to resolve mutual recursion cleanly
+  // Process queue & idle preload refs to resolve mutual recursion cleanly
   const processQueueRef = useRef<() => void>(() => {});
+  const scheduleIdlePreloadRef = useRef<() => void>(() => {});
 
   // Lifecycle & Performance tracking refs
   const animationFrameIdRef = useRef<number | null>(null);
@@ -101,11 +103,11 @@ export default function SparshaUnifiedHero() {
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
-      // Dynamically read actual natural source dimensions (future-proofed for 720p, 1080p, 4K)
+      // Dynamically read actual natural source dimensions (2544×1440 QHD+)
       const sourceWidth =
-        img.width || (img as HTMLImageElement).naturalWidth || 1280;
+        img.width || (img as HTMLImageElement).naturalWidth || 2544;
       const sourceHeight =
-        img.height || (img as HTMLImageElement).naturalHeight || 720;
+        img.height || (img as HTMLImageElement).naturalHeight || 1440;
 
       if (sourceWidth === 0 || sourceHeight === 0) return;
 
@@ -121,6 +123,11 @@ export default function SparshaUnifiedHero() {
 
       // Paint directly over previous opaque frame: zero blank frames, zero tearing, zero blur
       ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+
+      // Seamlessly fade out critical poster as canvas has rendered
+      if (posterRef.current && posterRef.current.style.opacity !== "0") {
+        posterRef.current.style.opacity = "0";
+      }
     },
     []
   );
@@ -312,17 +319,25 @@ export default function SparshaUnifiedHero() {
           if (readyImg) {
             paintToCanvas(readyImg);
             lastDrawnIndexRef.current = index;
+            if (posterRef.current && posterRef.current.style.opacity !== "0") {
+              posterRef.current.style.opacity = "0";
+            }
           }
         }
 
-        // Advance the queue to fill the newly freed worker slot
-        processQueueRef.current();
+        // Advance active directional queue if slots open, else schedule background idle preload
+        if (activeLoadsRef.current < maxConcurrency) {
+          processQueueRef.current();
+        }
+        if (activeLoadsRef.current === 0) {
+          scheduleIdlePreloadRef.current();
+        }
       };
 
       img.onload = () => onComplete(true);
       img.onerror = () => onComplete(false);
     },
-    [paintToCanvas]
+    [maxConcurrency, paintToCanvas]
   );
 
   // Direction-aware, prioritized preloader queue with bounded concurrency & adaptive memory eviction
@@ -369,10 +384,10 @@ export default function SparshaUnifiedHero() {
       }
     };
 
-    // 1. Current target frame
+    // 1. Current target frame (highest priority)
     addCandidate(target);
 
-    // 2. High priority directional lookahead
+    // 2. High priority directional lookahead in active scroll direction
     for (let i = 1; i <= preloadForward; i++) {
       addCandidate(target + i * dir);
     }
@@ -380,14 +395,6 @@ export default function SparshaUnifiedHero() {
     // 3. Backward safety buffer
     for (let i = 1; i <= preloadBackward; i++) {
       addCandidate(target - i * dir);
-    }
-
-    // 4. Extended outward caching on high-end desktop/laptop only
-    if (!isMobile && !isLowTier) {
-      for (let offset = preloadForward + 1; offset < TOTAL_FRAMES; offset++) {
-        addCandidate(target + offset * dir);
-        addCandidate(target - offset * dir);
-      }
     }
 
     // Dispatch requests up to maximum bounded concurrency
@@ -401,8 +408,6 @@ export default function SparshaUnifiedHero() {
       }
     }
   }, [
-    isLowTier,
-    isMobile,
     loadSingleFrame,
     maxCacheSize,
     maxConcurrency,
@@ -414,6 +419,53 @@ export default function SparshaUnifiedHero() {
   useEffect(() => {
     processQueueRef.current = processQueue;
   }, [processQueue]);
+
+  // Idle-time progressive preloader for background sequence preparation
+  const scheduleIdlePreload = useCallback(() => {
+    if (!isComponentMountedRef.current || activeLoadsRef.current > 0) return;
+
+    const requestIdle =
+      typeof window !== "undefined" && "requestIdleCallback" in window
+        ? (window as unknown as { requestIdleCallback: (cb: (deadline: { timeRemaining: () => number }) => void) => number }).requestIdleCallback
+        : (cb: (deadline: { timeRemaining: () => number }) => void) => setTimeout(() => cb({ timeRemaining: () => 50 }), 150);
+
+    requestIdle((deadline) => {
+      if (!isComponentMountedRef.current || activeLoadsRef.current > 0) return;
+
+      const target = targetFrameRef.current;
+      const dir = scrollDirectionRef.current;
+      const loaded = loadedFlagsRef.current;
+      const inFlight = inFlightFlagsRef.current;
+
+      // On mobile/low-tier, don't exceed maxCacheSize even in idle
+      const currentLoadedCount = loaded.filter(Boolean).length;
+      if (currentLoadedCount >= maxCacheSize) return;
+
+      // Find nearest unloaded frame ahead in scroll direction, then behind
+      let nextToLoad = -1;
+      for (let offset = 1; offset < TOTAL_FRAMES; offset++) {
+        const ahead = target + offset * dir;
+        if (ahead >= 0 && ahead < TOTAL_FRAMES && !loaded[ahead] && !inFlight[ahead]) {
+          nextToLoad = ahead;
+          break;
+        }
+        const behind = target - offset * dir;
+        if (behind >= 0 && behind < TOTAL_FRAMES && !loaded[behind] && !inFlight[behind]) {
+          nextToLoad = behind;
+          break;
+        }
+      }
+
+      if (nextToLoad !== -1 && deadline.timeRemaining() > 10) {
+        loadSingleFrame(nextToLoad);
+      }
+    });
+  }, [loadSingleFrame, maxCacheSize]);
+
+  // Keep scheduleIdlePreload ref fresh
+  useEffect(() => {
+    scheduleIdlePreloadRef.current = scheduleIdlePreload;
+  }, [scheduleIdlePreload]);
 
   // Directly update DOM styles based on scroll progress (avoids all React component re-renders)
   const updateScrollStyles = useCallback((progress: number) => {
@@ -494,15 +546,13 @@ export default function SparshaUnifiedHero() {
       }
     }
 
-    prefersReducedMotionRef.current = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-
-    // --- PHASE 1: Load Frame 001 immediately and paint to canvas ---
+    // --- PHASE 1: Load Frame 001 immediately with priority and paint to canvas ---
     loadSingleFrame(0);
 
-    // --- PHASE 2: Start priority queue to load initial directional frames ---
-    processQueue();
+    // --- PHASE 2: Load immediate critical window (frames 1 to 5) for instant scrolling readiness ---
+    for (let f = 1; f <= 5; f++) {
+      loadSingleFrame(f);
+    }
 
     // --- DETERMINISTIC SCROLL LISTENER (RAF THROTTLED) ---
     let scrollTicking = false;
@@ -691,17 +741,34 @@ export default function SparshaUnifiedHero() {
       <div className="sticky top-0 left-0 h-[100svh] min-h-[100svh] sm:h-screen w-full overflow-hidden bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf2f5]">
         
         {/* ======================================================== */}
+        {/* LAYER 0: Critical First-Frame Poster (Instant 1st Paint)  */}
+        {/* ======================================================== */}
+        <div
+          ref={posterRef}
+          className="absolute inset-0 block h-full w-full select-none pointer-events-none transition-opacity duration-300 z-0"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/frames/ezgif-frame-001.jpg"
+            alt="Sparsha Hero Product First Frame"
+            className="h-full w-full object-cover"
+            fetchPriority="high"
+            decoding="sync"
+          />
+        </div>
+
+        {/* ======================================================== */}
         {/* LAYER 1: Full-Bleed Direct Canvas (100% Source Clarity)  */}
         {/* ======================================================== */}
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 block h-full w-full select-none pointer-events-none opacity-100"
+          className="absolute inset-0 block h-full w-full select-none pointer-events-none opacity-100 z-[1]"
           style={{ imageRendering: "auto" }}
         />
 
         {/* Subtle top & bottom edge blending (leaves the entire center 85% crystal clear) */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#fdf8f9]/70 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#faedf1]/70 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#fdf8f9]/70 to-transparent z-10" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#faedf1]/70 to-transparent z-10" />
 
         {/* ======================================================== */}
         {/* LAYER 2: Existing Approved Sparsha Hero UI Layer         */}
@@ -1010,7 +1077,7 @@ export default function SparshaUnifiedHero() {
               className="h-full w-full object-cover"
             />
             <div className="absolute top-1 left-1 rounded bg-black/80 px-1.5 py-0.5 text-[9px] text-white">
-              Raw Source JPG (1280×720)
+              Raw Source JPG (2544×1440)
             </div>
           </div>
           <div className="mt-1.5 text-[9px] text-slate-400 leading-tight">
