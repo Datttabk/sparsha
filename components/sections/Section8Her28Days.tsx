@@ -9,11 +9,11 @@ export default function Section8Her28Days() {
   const [activePhase, setActivePhase] = useState<number>(0);
 
   const categories = [
-    { name: "Period Health", angle: 0, icon: <Heart className="h-3 w-3 text-[#d81b60]" /> },
-    { name: "Awareness", angle: 72, icon: <Sparkles className="h-3 w-3 text-[#d81b60]" /> },
-    { name: "Conversations", angle: 144, icon: <MessageCircle className="h-3 w-3 text-[#d81b60]" /> },
-    { name: "Hygiene", angle: 216, icon: <ShieldCheck className="h-3 w-3 text-[#d81b60]" /> },
-    { name: "Hormonal Wellness", angle: 288, icon: <Activity className="h-3 w-3 text-[#d81b60]" /> },
+    { name: "Period Health", left: "97%", top: "50%", icon: <Heart className="h-3 w-3 text-[#d81b60]" /> },
+    { name: "Awareness", left: "64.52%", top: "94.7%", icon: <Sparkles className="h-3 w-3 text-[#d81b60]" /> },
+    { name: "Conversations", left: "11.98%", top: "77.63%", icon: <MessageCircle className="h-3 w-3 text-[#d81b60]" /> },
+    { name: "Hygiene", left: "11.98%", top: "22.37%", icon: <ShieldCheck className="h-3 w-3 text-[#d81b60]" /> },
+    { name: "Hormonal Wellness", left: "64.52%", top: "5.3%", icon: <Activity className="h-3 w-3 text-[#d81b60]" /> },
   ];
 
   const phases = [
@@ -25,6 +25,7 @@ export default function Section8Her28Days() {
       desc: "Hormone levels drop as the uterine lining sheds. Your body calls for gentle pacing, warm hydration, and Sparsha XL 280mm maximum leak-lock security.",
       recommendation: "Sparsha XL 280mm (15 Pads) or XXL for heavy flow days.",
       color: "#d81b60",
+      transform: "translate(92px, -92px)",
     },
     {
       id: "follicular",
@@ -34,6 +35,7 @@ export default function Section8Her28Days() {
       desc: "Estrogen levels climb, restoring high physical energy, focus, and skin clarity. An ideal time for ambitious projects, strength workouts, and outdoor agility.",
       recommendation: "Sparsha Regular Trifold for ultra-slim everyday protection.",
       color: "#f43f5e",
+      transform: "translate(92px, 92px)",
     },
     {
       id: "ovulation",
@@ -43,6 +45,7 @@ export default function Section8Her28Days() {
       desc: "Luteinizing hormone spikes as an egg is released. Peak communication skills, vibrant social energy, and luminous mood define these mid-cycle days.",
       recommendation: "Light breathable daily protection & continuous hydration.",
       color: "#e11d48",
+      transform: "translate(-92px, 92px)",
     },
     {
       id: "luteal",
@@ -52,6 +55,7 @@ export default function Section8Her28Days() {
       desc: "Progesterone rises then eases. Focus on nutrient-rich meals, magnesium intake, and gentle rest as your body completes its 28-day rhythm.",
       recommendation: "Sparsha Ultra Soft Night comfort for uninterrupted sleep.",
       color: "#be185d",
+      transform: "translate(-92px, -92px)",
     },
   ];
 
@@ -94,26 +98,19 @@ export default function Section8Her28Days() {
               {/* OUTER CYCLE RING — ROTATES CONTINUOUSLY CLOCKWISE (Slow, Elegant 65s) */}
               <div className="absolute inset-0 rounded-full border-2 border-dashed border-[#e8b5c4] pointer-events-none animate-[spin_65s_linear_infinite] motion-reduce:animate-none">
                 {/* 5 Orbiting Wellness Category Markers (Positioned along the perimeter) */}
-                {categories.map((cat, idx) => {
-                  const rad = (cat.angle * Math.PI) / 180;
-                  // Radius percentage relative to center (50%)
-                  const x = 50 + 47 * Math.cos(rad);
-                  const y = 50 + 47 * Math.sin(rad);
-
-                  return (
-                    <div
-                      key={idx}
-                      className="absolute -translate-x-1/2 -translate-y-1/2"
-                      style={{ left: `${x}%`, top: `${y}%` }}
-                    >
-                      {/* Counter-rotate inside to keep label upright and readable */}
-                      <div className="animate-[spin_65s_linear_infinite_reverse] motion-reduce:animate-none flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[9px] sm:text-[10px] font-bold text-[#6b4759] shadow-sm border border-rose-100 backdrop-blur-sm whitespace-nowrap">
-                        {cat.icon}
-                        <span>{cat.name}</span>
-                      </div>
+                {categories.map((cat, idx) => (
+                  <div
+                    key={idx}
+                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: cat.left, top: cat.top }}
+                  >
+                    {/* Counter-rotate inside to keep label upright and readable */}
+                    <div className="animate-[spin_65s_linear_infinite_reverse] motion-reduce:animate-none flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[9px] sm:text-[10px] font-bold text-[#6b4759] shadow-sm border border-rose-100 backdrop-blur-sm whitespace-nowrap">
+                      {cat.icon}
+                      <span>{cat.name}</span>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
 
               {/* INNER CYCLE RING — ROTATES SUBTLY COUNTER-CLOCKWISE (90s) */}
@@ -125,28 +122,22 @@ export default function Section8Her28Days() {
               </div>
 
               {/* 4 INTERACTIVE CYCLE PHASE BUTTONS (Positioned along inner orbit) */}
-              {phases.map((phase, idx) => {
-                const angleDeg = idx * 90 - 45;
-                const rad = (angleDeg * Math.PI) / 180;
-                // Position distance from center
-                const radiusPx = 130; // on mobile scaled down by container
-                return (
-                  <button
-                    key={phase.id}
-                    onClick={() => setActivePhase(idx)}
-                    className={`absolute z-30 flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-bold transition-all duration-300 shadow-sm ${
-                      activePhase === idx
-                        ? "bg-[#d81b60] text-white scale-110 shadow-lg ring-4 ring-[#faebee]"
-                        : "bg-white/95 text-[#4a3540] hover:bg-white hover:scale-105 border border-[#f5e4e8]"
-                    }`}
-                    style={{
-                      transform: `translate(calc(${Math.cos(rad) * radiusPx}px), calc(${Math.sin(rad) * radiusPx}px))`,
-                    }}
-                  >
-                    <span>{phase.days}</span>
-                  </button>
-                );
-              })}
+              {phases.map((phase, idx) => (
+                <button
+                  key={phase.id}
+                  onClick={() => setActivePhase(idx)}
+                  className={`absolute z-30 flex items-center justify-center rounded-full px-3 py-1.5 text-[11px] sm:text-xs font-bold transition-all duration-300 shadow-sm ${
+                    activePhase === idx
+                      ? "bg-[#d81b60] text-white scale-110 shadow-lg ring-4 ring-[#faebee]"
+                      : "bg-white/95 text-[#4a3540] hover:bg-white hover:scale-105 border border-[#f5e4e8]"
+                  }`}
+                  style={{
+                    transform: phase.transform,
+                  }}
+                >
+                  <span>{phase.days}</span>
+                </button>
+              ))}
 
               {/* VISUALLY STABLE CENTER HUB — OFFICIAL HER28DAYS LOGO */}
               <div className="relative z-20 flex flex-col items-center justify-center text-center rounded-full bg-white p-6 shadow-card-wellness border-2 border-white/95 h-44 w-44 sm:h-52 sm:w-52 overflow-hidden">
