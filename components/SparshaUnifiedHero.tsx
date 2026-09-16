@@ -39,10 +39,12 @@ export default function SparshaUnifiedHero() {
   const targetFrameRef = useRef<number>(0);
   const currentFrameRef = useRef<number>(0);
   const scrollProgressRef = useRef<number>(0);
+  const lastDrawnIndexRef = useRef<number>(-1);
   const bitmapCacheRef = useRef<(ImageBitmap | HTMLImageElement | null)[]>(
     new Array(TOTAL_FRAMES).fill(null)
   );
   const loadedFlagsRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
+  const inFlightRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
   const animationFrameIdRef = useRef<number | null>(null);
   const isComponentMountedRef = useRef<boolean>(true);
   const isIntersectingRef = useRef<boolean>(true);
@@ -76,38 +78,45 @@ export default function SparshaUnifiedHero() {
     const drawX = Math.round((canvasWidth - drawWidth) / 2);
     const drawY = Math.round((canvasHeight - drawHeight) / 2);
 
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    // Paint directly over previous frame (no clearRect to prevent white flickering/tearing)
     ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
   }, [isLowTier]);
 
-  // Nearest-neighbor fallback: find and render the closest fully decoded frame
+  // Nearest-neighbor fallback: only fall back within tight radius (max 4 frames).
+  // If no immediate neighbor is ready, DO NOT CLEAR or JUMP FAR! Keep last valid frame on canvas.
   const renderClosestLoadedFrame = useCallback(
-    (targetIndex: number) => {
+    (targetIndex: number): boolean => {
       const cache = bitmapCacheRef.current;
       const flags = loadedFlagsRef.current;
 
-      // Exact match
+      // 1. Exact match
       if (flags[targetIndex] && cache[targetIndex]) {
         renderFrame(cache[targetIndex]!);
-        return;
+        lastDrawnIndexRef.current = targetIndex;
+        return true;
       }
 
-      // Search outward for nearest neighbor
-      let left = targetIndex - 1;
-      let right = targetIndex + 1;
+      // 2. Search outward within a narrow tolerance (max 4 frames)
+      const MAX_NEIGHBOR_RADIUS = 4;
+      for (let offset = 1; offset <= MAX_NEIGHBOR_RADIUS; offset++) {
+        const left = targetIndex - offset;
+        const right = targetIndex + offset;
 
-      while (left >= 0 || right < TOTAL_FRAMES) {
         if (left >= 0 && flags[left] && cache[left]) {
           renderFrame(cache[left]!);
-          return;
+          lastDrawnIndexRef.current = left;
+          return true;
         }
         if (right < TOTAL_FRAMES && flags[right] && cache[right]) {
           renderFrame(cache[right]!);
-          return;
+          lastDrawnIndexRef.current = right;
+          return true;
         }
-        left--;
-        right++;
       }
+
+      // 3. If target frame isn't ready and no immediate neighbor is ready,
+      // retain previously drawn frame without jitter or jumping back to frame 0
+      return false;
     },
     [renderFrame]
   );
@@ -134,16 +143,24 @@ export default function SparshaUnifiedHero() {
     renderClosestLoadedFrame(activeFrameIndex);
   }, [dprCap, renderClosestLoadedFrame]);
 
-  // Load an individual frame with hardware-accelerated GPU decoding via createImageBitmap
+  // Load an individual frame with deduplicated in-flight requests and instant canvas update
   const loadSingleFrame = useCallback(
-    (index: number): Promise<ImageBitmap | HTMLImageElement> => {
+    (index: number): Promise<ImageBitmap | HTMLImageElement | null> => {
       return new Promise((resolve) => {
-        if (index < 0 || index >= TOTAL_FRAMES) return;
-        if (bitmapCacheRef.current[index]) {
+        if (index < 0 || index >= TOTAL_FRAMES) {
+          resolve(null);
+          return;
+        }
+        if (loadedFlagsRef.current[index] && bitmapCacheRef.current[index]) {
           resolve(bitmapCacheRef.current[index]!);
           return;
         }
+        if (inFlightRef.current[index]) {
+          resolve(null); // Request already in-flight, avoid network flooding
+          return;
+        }
 
+        inFlightRef.current[index] = true;
         const img = new window.Image();
         img.src = getFramePath(index);
 
@@ -155,31 +172,52 @@ export default function SparshaUnifiedHero() {
               if (!isComponentMountedRef.current) return;
               bitmapCacheRef.current[index] = bitmap;
               loadedFlagsRef.current[index] = true;
+              inFlightRef.current[index] = false;
+
+              // If this frame corresponds to the user's active viewport position, paint it immediately!
+              const currentActive = Math.round(currentFrameRef.current);
+              if (Math.abs(currentActive - index) <= 2) {
+                renderClosestLoadedFrame(currentActive);
+              }
               resolve(bitmap);
             } else if (typeof img.decode === "function") {
               await img.decode();
               if (!isComponentMountedRef.current) return;
               bitmapCacheRef.current[index] = img;
               loadedFlagsRef.current[index] = true;
+              inFlightRef.current[index] = false;
+
+              const currentActive = Math.round(currentFrameRef.current);
+              if (Math.abs(currentActive - index) <= 2) {
+                renderClosestLoadedFrame(currentActive);
+              }
               resolve(img);
             } else {
               bitmapCacheRef.current[index] = img;
               loadedFlagsRef.current[index] = true;
+              inFlightRef.current[index] = false;
+
+              const currentActive = Math.round(currentFrameRef.current);
+              if (Math.abs(currentActive - index) <= 2) {
+                renderClosestLoadedFrame(currentActive);
+              }
               resolve(img);
             }
           } catch {
             bitmapCacheRef.current[index] = img;
             loadedFlagsRef.current[index] = true;
+            inFlightRef.current[index] = false;
             resolve(img);
           }
         };
 
         img.onerror = () => {
-          resolve(img);
+          inFlightRef.current[index] = false;
+          resolve(null);
         };
       });
     },
-    []
+    [renderClosestLoadedFrame]
   );
 
   // Directly update DOM styles based on scroll progress (avoids all React component re-renders)
@@ -251,11 +289,12 @@ export default function SparshaUnifiedHero() {
     loadSingleFrame(0).then((firstImg) => {
       if (isComponentMountedRef.current && firstImg) {
         renderFrame(firstImg);
+        lastDrawnIndexRef.current = 0;
       }
     });
 
-    // --- PHASE 2: Load initial burst of nearby frames (1 to 12) ---
-    const initialBurst = isLowTier ? 6 : 12;
+    // --- PHASE 2: Load initial burst of nearby frames (0 to 30) ---
+    const initialBurst = 30;
     for (let i = 1; i <= initialBurst; i++) {
       loadSingleFrame(i);
     }
@@ -263,12 +302,12 @@ export default function SparshaUnifiedHero() {
     // --- PHASE 3: Progressive non-blocking background preloader queue ---
     const preloadRestOfFrames = () => {
       let currentIndex = initialBurst + 1;
-      const batchSize = isLowTier ? 4 : 6;
+      const batchSize = isLowTier ? 6 : 10;
 
       const loadNextBatch = () => {
         if (!isComponentMountedRef.current || currentIndex >= TOTAL_FRAMES) return;
 
-        const promises: Promise<ImageBitmap | HTMLImageElement>[] = [];
+        const promises: Promise<ImageBitmap | HTMLImageElement | null>[] = [];
         for (
           let i = 0;
           i < batchSize && currentIndex < TOTAL_FRAMES;
@@ -280,9 +319,9 @@ export default function SparshaUnifiedHero() {
         Promise.all(promises).then(() => {
           if (!isComponentMountedRef.current) return;
           if (typeof window.requestIdleCallback !== "undefined") {
-            window.requestIdleCallback(loadNextBatch, { timeout: isLowTier ? 120 : 80 });
+            window.requestIdleCallback(loadNextBatch, { timeout: 40 });
           } else {
-            setTimeout(loadNextBatch, isLowTier ? 50 : 35);
+            setTimeout(loadNextBatch, 20);
           }
         });
       };
@@ -290,7 +329,7 @@ export default function SparshaUnifiedHero() {
       loadNextBatch();
     };
 
-    const bgPreloadTimeout = setTimeout(preloadRestOfFrames, 250);
+    const bgPreloadTimeout = setTimeout(preloadRestOfFrames, 100);
 
     // --- HIGH-PERFORMANCE SCROLL PROGRESS LISTENER (RAF THROTTLED) ---
     let scrollTicking = false;
@@ -316,11 +355,11 @@ export default function SparshaUnifiedHero() {
 
       // Prioritize nearby frames around active user scroll position
       const currentTarget = Math.round(targetFrameRef.current);
-      const prefetchRadius = isLowTier ? 8 : 15;
-      const start = Math.max(0, currentTarget - prefetchRadius);
+      const prefetchRadius = 15;
+      const start = Math.max(0, currentTarget - 5);
       const end = Math.min(TOTAL_FRAMES - 1, currentTarget + prefetchRadius);
       for (let f = start; f <= end; f++) {
-        if (!loadedFlagsRef.current[f]) {
+        if (!loadedFlagsRef.current[f] && !inFlightRef.current[f]) {
           loadSingleFrame(f);
         }
       }
@@ -345,7 +384,6 @@ export default function SparshaUnifiedHero() {
 
     // --- INTERSECTION OBSERVER: PAUSE OFF-SCREEN ANIMATIONS ---
     const smoothingFactor = isLowTier ? 0.25 : isMobile ? 0.20 : BASE_SMOOTHING_FACTOR;
-    let lastRenderedIndex = -1;
 
     const renderLoop = () => {
       if (!isComponentMountedRef.current || !isIntersectingRef.current) return;
@@ -369,13 +407,16 @@ export default function SparshaUnifiedHero() {
         Math.max(0, Math.round(currentFrameRef.current))
       );
 
-      if (frameIndex !== lastRenderedIndex) {
-        renderClosestLoadedFrame(frameIndex);
-        lastRenderedIndex = frameIndex;
-
-        if (counterTextRef.current) {
-          counterTextRef.current.textContent = String(frameIndex + 1).padStart(3, "0");
+      // Draw current active frame smoothly if not already on canvas
+      if (frameIndex !== lastDrawnIndexRef.current) {
+        const painted = renderClosestLoadedFrame(frameIndex);
+        if (!painted && !loadedFlagsRef.current[frameIndex] && !inFlightRef.current[frameIndex]) {
+          loadSingleFrame(frameIndex);
         }
+      }
+
+      if (counterTextRef.current) {
+        counterTextRef.current.textContent = String(frameIndex + 1).padStart(3, "0");
       }
 
       animationFrameIdRef.current = requestAnimationFrame(renderLoop);
