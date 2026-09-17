@@ -16,14 +16,24 @@ import { useAdaptivePerformance } from "@/hooks/useAdaptivePerformance";
 const TOTAL_FRAMES = 300;
 const SOURCE_WIDTH = 2544;
 const SOURCE_HEIGHT = 1440;
-const MAX_CANVAS_WIDTH = 2544;
-const MAX_CANVAS_HEIGHT = 1440;
 
 // Programmatically generate zero-padded frame paths (001 -> 300)
 const getFramePath = (index: number): string => {
   const frameNumber = String(index + 1).padStart(3, "0");
   return `/frames/ezgif-frame-${frameNumber}.jpg`;
 };
+
+type DrawableFrame = ImageBitmap | HTMLImageElement;
+
+interface FrameEntry {
+  status: "idle" | "loading" | "loaded" | "failed";
+  data: DrawableFrame | null;
+  lastUsed: number;
+  abortController?: AbortController;
+  requestStartTime?: number;
+  requestDuration?: number;
+  decodeDuration?: number;
+}
 
 export default function SparshaUnifiedHero() {
   const sectionRef = useRef<HTMLDivElement>(null);
@@ -38,56 +48,52 @@ export default function SparshaUnifiedHero() {
   const scrollPromptRef = useRef<HTMLDivElement>(null);
   const counterContainerRef = useRef<HTMLDivElement>(null);
   const counterTextRef = useRef<HTMLSpanElement>(null);
-  const debugHudRef = useRef<HTMLDivElement>(null);
-  const compareContainerRef = useRef<HTMLDivElement>(null);
-  const compareImgRef = useRef<HTMLImageElement>(null);
 
   // Animation & Frame tracking refs (zero React re-renders on scroll)
   const targetFrameRef = useRef<number>(0);
-  const currentFrameRef = useRef<number>(0);
+  const displayedFrameRef = useRef<number>(-1);
+  const lastValidFrameRef = useRef<number>(-1);
   const scrollProgressRef = useRef<number>(0);
   const scrollDirectionRef = useRef<number>(1); // 1 = down, -1 = up
-  const lastDrawnIndexRef = useRef<number>(-1);
+  const latestScrollYRef = useRef<number>(0);
+  const lastScrollTimeRef = useRef<number>(0);
+  const velocityRef = useRef<number>(0);
+  const sectionTopRef = useRef<number>(0);
+  const scrollableDistanceRef = useRef<number>(1);
 
-  // Decoded image cache & concurrency flags
-  const bitmapCacheRef = useRef<(ImageBitmap | HTMLImageElement | null)[]>(
-    new Array(TOTAL_FRAMES).fill(null)
+  // Decoded image cache & concurrency management
+  const framesRef = useRef<FrameEntry[]>(
+    Array.from({ length: TOTAL_FRAMES }, () => ({
+      status: "idle",
+      data: null,
+      lastUsed: 0,
+    }))
   );
-  const loadedFlagsRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
-  const inFlightFlagsRef = useRef<boolean[]>(new Array(TOTAL_FRAMES).fill(false));
   const activeLoadsRef = useRef<number>(0);
+  const idleCallbackIdRef = useRef<number | null>(null);
 
-  // Process queue & idle preload refs to resolve mutual recursion cleanly
-  const processQueueRef = useRef<() => void>(() => {});
-  const scheduleIdlePreloadRef = useRef<() => void>(() => {});
+  // Function refs for queue scheduler to resolve mutual references cleanly
+  const dispatchQueueRef = useRef<() => void>(() => {});
 
-  // Lifecycle & Performance tracking refs
+  // Lifecycle & performance tracking refs
   const animationFrameIdRef = useRef<number | null>(null);
   const isComponentMountedRef = useRef<boolean>(true);
   const isIntersectingRef = useRef<boolean>(true);
-  const prefersReducedMotionRef = useRef<boolean>(false);
 
-  // Development debug tracking (HUD enabled via ?debug=1, comparator via ?compare=1)
-  const isDebugModeRef = useRef<boolean>(false);
-  const isCompareModeRef = useRef<boolean>(false);
-  const fpsRef = useRef<number>(60);
-  const frameCountRef = useRef<number>(0);
-  const lastFpsTimeRef = useRef<number>(0);
+  const initialFrameTimeRef = useRef<number>(0);
 
   // Adaptive performance tiering
   const {
     dprCap,
     isLowTier,
     isMobile,
-    maxConcurrency,
     maxCacheSize,
-    preloadForward,
-    preloadBackward,
+    maxConcurrency,
   } = useAdaptivePerformance();
 
-  // Draw an image directly to canvas using high-performance cover math (No clearRect)
+  // High-performance canvas blitter with exact aspect-ratio-preserving cover math
   const paintToCanvas = useCallback(
-    (img: ImageBitmap | HTMLImageElement) => {
+    (frame: DrawableFrame, frameIndex: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d", {
@@ -96,22 +102,24 @@ export default function SparshaUnifiedHero() {
       });
       if (!ctx) return;
 
-      // High quality filtering on direct canvas blit
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
 
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
 
-      // Dynamically read actual natural source dimensions (2544×1440 QHD+)
       const sourceWidth =
-        img.width || (img as HTMLImageElement).naturalWidth || 2544;
+        "naturalWidth" in frame
+          ? frame.naturalWidth || SOURCE_WIDTH
+          : frame.width || SOURCE_WIDTH;
       const sourceHeight =
-        img.height || (img as HTMLImageElement).naturalHeight || 1440;
+        "naturalHeight" in frame
+          ? frame.naturalHeight || SOURCE_HEIGHT
+          : frame.height || SOURCE_HEIGHT;
 
       if (sourceWidth === 0 || sourceHeight === 0) return;
 
-      // Single-pass direct cover math: maps image directly to physical canvas grid
+      // 1:1 Physical Grid Mapping: maps source image directly to canvas buffer without double scaling
       const hRatio = canvasWidth / sourceWidth;
       const vRatio = canvasHeight / sourceHeight;
       const scale = Math.max(hRatio, vRatio);
@@ -121,120 +129,360 @@ export default function SparshaUnifiedHero() {
       const drawX = Math.round((canvasWidth - drawWidth) / 2);
       const drawY = Math.round((canvasHeight - drawHeight) / 2);
 
-      // Paint directly over previous opaque frame: zero blank frames, zero tearing, zero blur
-      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+      // Paint directly over previous frame (opaque draw, zero clearRect, zero blank/white flash)
+      ctx.drawImage(frame, drawX, drawY, drawWidth, drawHeight);
 
-      // Seamlessly fade out critical poster as canvas has rendered
+      displayedFrameRef.current = frameIndex;
+      lastValidFrameRef.current = frameIndex;
+
+      // Update LRU timestamp
+      if (framesRef.current[frameIndex]) {
+        framesRef.current[frameIndex].lastUsed = performance.now();
+      }
+
+      // Seamlessly fade out critical poster once canvas has rendered
       if (posterRef.current && posterRef.current.style.opacity !== "0") {
         posterRef.current.style.opacity = "0";
+      }
+
+      // Update frame counter DOM (zero React re-render)
+      if (counterTextRef.current) {
+        counterTextRef.current.textContent = String(frameIndex + 1).padStart(
+          3,
+          "0"
+        );
       }
     },
     []
   );
 
-  // Strict continuity fallback:
-  // 1. Exact target frame
-  // 2. Immediate adjacent neighbor in scroll direction (±1 frame only)
-  // 3. Otherwise: RETAIN current canvas! NEVER jump dozens of frames away!
-  const drawFrameWithStrictContinuity = useCallback(
-    (desiredIndex: number): boolean => {
-      const cache = bitmapCacheRef.current;
-      const loaded = loadedFlagsRef.current;
+  // Evict excess frames beyond maxCacheSize to prevent memory explosion
+  const evictExcessFrames = useCallback(() => {
+    const frames = framesRef.current;
+    let loadedCount = 0;
+    for (let i = 0; i < TOTAL_FRAMES; i++) {
+      if (frames[i].status === "loaded" && frames[i].data) {
+        loadedCount++;
+      }
+    }
 
-      // 1. Exact match
-      if (loaded[desiredIndex] && cache[desiredIndex]) {
-        paintToCanvas(cache[desiredIndex]!);
-        lastDrawnIndexRef.current = desiredIndex;
-        return true;
+    if (loadedCount <= maxCacheSize) return;
+
+    const target = targetFrameRef.current;
+    const displayed = displayedFrameRef.current;
+    const excess = loadedCount - maxCacheSize;
+
+    // Collect candidates for eviction (never evict frame 0, target, displayed, or near neighbors)
+    const evictCandidates: { index: number; dist: number; lastUsed: number }[] = [];
+    for (let i = 0; i < TOTAL_FRAMES; i++) {
+      const entry = frames[i];
+      if (entry.status === "loaded" && entry.data) {
+        if (i === 0 || i === target || i === displayed || Math.abs(i - target) <= 6) {
+          continue;
+        }
+        evictCandidates.push({
+          index: i,
+          dist: Math.abs(i - target),
+          lastUsed: entry.lastUsed,
+        });
+      }
+    }
+
+    // Sort farthest from target first, then oldest lastUsed
+    evictCandidates.sort((a, b) => {
+      if (b.dist !== a.dist) return b.dist - a.dist;
+      return a.lastUsed - b.lastUsed;
+    });
+
+    const toEvict = Math.min(excess, evictCandidates.length);
+    for (let i = 0; i < toEvict; i++) {
+      const idx = evictCandidates[i].index;
+      const entry = frames[idx];
+      if (entry.data) {
+        if ("close" in entry.data && typeof entry.data.close === "function") {
+          entry.data.close();
+        }
+        entry.data = null;
+      }
+      entry.status = "idle";
+    }
+  }, [maxCacheSize]);
+
+  // Load a single frame with deduplicated requests, AbortController, and off-thread decoding
+  const loadFrame = useCallback(
+    (index: number, isPriority: boolean = false) => {
+      if (index < 0 || index >= TOTAL_FRAMES) return;
+      const entry = framesRef.current[index];
+      if (entry.status === "loading" || entry.status === "loaded") {
+        if (entry.status === "loaded") {
+          entry.lastUsed = performance.now();
+        }
+        return;
       }
 
-      // 2. Strict immediate neighbor check (only ±1 frame in scroll direction)
-      const dir = scrollDirectionRef.current;
-      const prevInDir = desiredIndex - dir;
-      if (
-        prevInDir >= 0 &&
-        prevInDir < TOTAL_FRAMES &&
-        loaded[prevInDir] &&
-        cache[prevInDir]
-      ) {
-        paintToCanvas(cache[prevInDir]!);
-        lastDrawnIndexRef.current = prevInDir;
-        return true;
-      }
+      const controller = new AbortController();
+      entry.status = "loading";
+      entry.abortController = controller;
+      entry.requestStartTime = performance.now();
+      activeLoadsRef.current++;
 
-      const nextInDir = desiredIndex + dir;
-      if (
-        nextInDir >= 0 &&
-        nextInDir < TOTAL_FRAMES &&
-        loaded[nextInDir] &&
-        cache[nextInDir]
-      ) {
-        paintToCanvas(cache[nextInDir]!);
-        lastDrawnIndexRef.current = nextInDir;
-        return true;
-      }
+      const cleanup = () => {
+        activeLoadsRef.current = Math.max(0, activeLoadsRef.current - 1);
+        if (entry.abortController === controller) {
+          entry.abortController = undefined;
+        }
+      };
 
-      // 3. Neither desired nor immediate neighbor ready:
-      // RETAIN currently displayed canvas image without clearing or jumping!
-      return false;
+      (async () => {
+        try {
+          const url = getFramePath(index);
+          const res = await fetch(url, {
+            signal: controller.signal,
+          });
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const blob = await res.blob();
+
+          if (!isComponentMountedRef.current || controller.signal.aborted) {
+            cleanup();
+            return;
+          }
+
+          const decodeStart = performance.now();
+          let frame: DrawableFrame;
+
+          if (typeof window.createImageBitmap === "function") {
+            frame = await createImageBitmap(blob);
+          } else {
+            frame = await new Promise<HTMLImageElement>((resolve, reject) => {
+              const img = new window.Image();
+              const objectUrl = URL.createObjectURL(blob);
+              img.onload = () => {
+                URL.revokeObjectURL(objectUrl);
+                resolve(img);
+              };
+              img.onerror = () => {
+                URL.revokeObjectURL(objectUrl);
+                reject(new Error("Image decode failed"));
+              };
+              img.src = objectUrl;
+              if (typeof img.decode === "function") {
+                img.decode().catch(() => {});
+              }
+            });
+          }
+
+          if (!isComponentMountedRef.current || controller.signal.aborted) {
+            if ("close" in frame && typeof frame.close === "function") {
+              frame.close();
+            }
+            cleanup();
+            return;
+          }
+
+          const decodeEnd = performance.now();
+          entry.decodeDuration = decodeEnd - decodeStart;
+          entry.requestDuration = decodeStart - (entry.requestStartTime || decodeStart);
+          entry.status = "loaded";
+          entry.data = frame;
+          entry.lastUsed = performance.now();
+          cleanup();
+
+          if (index === 0 && initialFrameTimeRef.current === 0) {
+            initialFrameTimeRef.current = Math.round(performance.now());
+          }
+
+          // Maintain adaptive memory limits
+          evictExcessFrames();
+
+          // Check if this frame should render immediately according to current scroll timeline:
+          const currentTarget = targetFrameRef.current;
+          const currentDisplayed = displayedFrameRef.current;
+          const dir = scrollDirectionRef.current;
+
+          if (index === currentTarget && currentDisplayed !== index) {
+            paintToCanvas(frame, index);
+          } else if (
+            (dir >= 0 && index > currentDisplayed && index <= currentTarget) ||
+            (dir < 0 && index < currentDisplayed && index >= currentTarget)
+          ) {
+            paintToCanvas(frame, index);
+          }
+        } catch (err: unknown) {
+          if ((err as Error)?.name === "AbortError" || controller.signal.aborted) {
+            entry.status = "idle";
+          } else {
+            entry.status = "failed";
+          }
+          cleanup();
+        } finally {
+          dispatchQueueRef.current();
+        }
+      })();
     },
-    [paintToCanvas]
+    [evictExcessFrames, paintToCanvas]
   );
 
-  // Update Development Debug HUD via direct DOM to prevent React re-renders
-  const updateDebugHUD = useCallback(() => {
-    if (!isDebugModeRef.current || !debugHudRef.current || !canvasRef.current) return;
-    const loadedCount = loadedFlagsRef.current.filter(Boolean).length;
-    const activeFrame =
-      lastDrawnIndexRef.current >= 0 ? lastDrawnIndexRef.current + 1 : 1;
-    const targetFrame = targetFrameRef.current + 1;
-    const dir = scrollDirectionRef.current === 1 ? "DOWN" : "UP";
-    const canvas = canvasRef.current;
-    const rawDpr = (window.devicePixelRatio || 1).toFixed(2);
-    const effectiveDpr = (canvas.width / (window.innerWidth || 1)).toFixed(2);
-    const progressPct = Math.round(scrollProgressRef.current * 100);
+  // Background idle streaming: loads remaining frames during browser idle periods
+  const scheduleIdlePreload = useCallback(() => {
+    if (!isComponentMountedRef.current) return;
+    if (activeLoadsRef.current >= 3) return;
+    if (idleCallbackIdRef.current !== null) return;
 
-    const activeImg =
-      lastDrawnIndexRef.current >= 0
-        ? bitmapCacheRef.current[lastDrawnIndexRef.current]
-        : null;
-    const sourceDim = activeImg
-      ? `${activeImg.width}×${activeImg.height}`
-      : "1280×720";
+    const runIdle = () => {
+      idleCallbackIdRef.current = null;
+      if (!isComponentMountedRef.current) return;
+      if (activeLoadsRef.current >= 3) return;
 
-    debugHudRef.current.innerHTML = `
-      <div style="font-weight:700;color:#f472b6;margin-bottom:4px;letter-spacing:0.05em;">SPARSHA HIGH-FIDELITY DIAGNOSTIC</div>
-      <div>FRAME: <span style="color:#38bdf8;font-weight:bold;">${String(activeFrame).padStart(3, "0")}</span> / ${TOTAL_FRAMES}</div>
-      <div>TARGET: <span style="color:#facc15;font-weight:bold;">${String(targetFrame).padStart(3, "0")}</span> (${dir})</div>
-      <div>LOADED: <span style="color:#4ade80;">${loadedCount}</span> / ${TOTAL_FRAMES} (Active: ${activeLoadsRef.current})</div>
-      <div>FPS: <span style="color:#a78bfa;font-weight:bold;">${fpsRef.current}</span></div>
-      <div>VIEWPORT (CSS): ${window.innerWidth}×${window.innerHeight}</div>
-      <div>CANVAS BUFFER: ${canvas.width}×${canvas.height}</div>
-      <div>DPR: ${effectiveDpr} (Screen DPR: ${rawDpr})</div>
-      <div>SOURCE NATIVE: ${sourceDim} (16:9)</div>
-      <div>SCROLL: ${progressPct}%</div>
-      <div style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.2);padding-top:4px;font-size:10px;color:#94a3b8;">
-        1:1 Physical Grid Mapping • No Double Scaling • 100% Opacity
-      </div>
-    `;
+      const target = targetFrameRef.current;
+      const dir = scrollDirectionRef.current;
+      const frames = framesRef.current;
 
-    // Synchronize split-screen comparison image with active frame
-    if (isCompareModeRef.current && compareImgRef.current) {
-      const activeIdx =
-        lastDrawnIndexRef.current >= 0 ? lastDrawnIndexRef.current : 0;
-      compareImgRef.current.src = getFramePath(activeIdx);
+      // Find next unqueued frame in scroll direction
+      let candidate = -1;
+      for (let i = 1; i < TOTAL_FRAMES; i++) {
+        const forwardIdx = target + i * dir;
+        if (
+          forwardIdx >= 0 &&
+          forwardIdx < TOTAL_FRAMES &&
+          frames[forwardIdx].status === "idle"
+        ) {
+          candidate = forwardIdx;
+          break;
+        }
+        const backwardIdx = target - i * dir;
+        if (
+          backwardIdx >= 0 &&
+          backwardIdx < TOTAL_FRAMES &&
+          frames[backwardIdx].status === "idle"
+        ) {
+          candidate = backwardIdx;
+          break;
+        }
+      }
+
+      if (candidate !== -1 && frames[candidate].status === "idle") {
+        loadFrame(candidate, false);
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      const win = window as unknown as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      };
+      if (typeof win.requestIdleCallback === "function") {
+        idleCallbackIdRef.current = win.requestIdleCallback(runIdle, {
+          timeout: 400,
+        });
+      } else {
+        idleCallbackIdRef.current = setTimeout(runIdle, 50) as unknown as number;
+      }
     }
-  }, []);
+  }, [loadFrame]);
 
-  // Resize canvas matching display physical pixel grid 1:1 to eliminate compositor interpolation blur
+  // High-Throughput Priority Queue with Dynamic Abort & Deep Lookahead Windowing
+  const dispatchQueue = useCallback(() => {
+    if (!isComponentMountedRef.current) return;
+
+    const target = targetFrameRef.current;
+    const dir = scrollDirectionRef.current; // 1 = down, -1 = up
+    const frames = framesRef.current;
+
+    // 1. DYNAMIC ABORT: cancel in-flight requests that are truly obsolete
+    // Free slots immediately for the active scroll target
+    for (let idx = 0; idx < TOTAL_FRAMES; idx++) {
+      const entry = frames[idx];
+      if (entry.status === "loading" && entry.abortController && idx !== 0) {
+        const dist = Math.abs(idx - target);
+        // Only abort if frame is far behind where we are (> 20 frames behind)
+        // or way too far ahead (> 80 frames ahead)
+        const isStaleBehind = dir === 1 ? idx < target - 20 : idx > target + 20;
+        if (dist > 80 || isStaleBehind) {
+          entry.abortController.abort();
+          entry.status = "idle";
+          activeLoadsRef.current = Math.max(0, activeLoadsRef.current - 1);
+        }
+      }
+    }
+
+    // 2. BUILD CANDIDATES IN STRICT PRIORITY ORDER
+    const candidates: number[] = [];
+    const added = new Set<number>();
+
+    const addCandidate = (idx: number) => {
+      if (
+        idx >= 0 &&
+        idx < TOTAL_FRAMES &&
+        !added.has(idx) &&
+        frames[idx].status === "idle"
+      ) {
+        added.add(idx);
+        candidates.push(idx);
+      }
+    };
+
+    // Tier 0: Target frame (Absolute Priority)
+    addCandidate(target);
+
+    // Tier 1: Immediate directional lookahead (1 to 12 frames ahead)
+    for (let i = 1; i <= 12; i++) {
+      addCandidate(target + i * dir);
+    }
+
+    // Tier 2: Near safety buffer behind (1 to 6 frames behind)
+    for (let i = 1; i <= 6; i++) {
+      addCandidate(target - i * dir);
+    }
+
+    // Tier 3: Medium forward streaming buffer (13 to 40 frames ahead)
+    for (let i = 13; i <= 40; i++) {
+      addCandidate(target + i * dir);
+    }
+
+    // Tier 4: Extended reverse buffer (7 to 15 frames behind)
+    for (let i = 7; i <= 15; i++) {
+      addCandidate(target - i * dir);
+    }
+
+    // Tier 5: Far predictive forward window (41 to 70 frames ahead)
+    for (let i = 41; i <= 70; i++) {
+      addCandidate(target + i * dir);
+    }
+
+    // 3. DISPATCH HIGH-PRIORITY REQUESTS
+    while (activeLoadsRef.current < maxConcurrency && candidates.length > 0) {
+      const nextIdx = candidates.shift();
+      if (nextIdx !== undefined && frames[nextIdx].status === "idle") {
+        loadFrame(nextIdx, nextIdx === target);
+      }
+    }
+
+    // 4. SCHEDULE IDLE BACKGROUND STREAMING
+    scheduleIdlePreload();
+  }, [loadFrame, maxConcurrency, scheduleIdlePreload]);
+
+  useEffect(() => {
+    dispatchQueueRef.current = dispatchQueue;
+  }, [dispatchQueue]);
+
+  // Update geometry measurements and match canvas physical pixel grid
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const section = sectionRef.current;
+    if (!canvas || !section) return;
+
+    // Cache section layout coordinates without reflowing on scroll
+    const rect = section.getBoundingClientRect();
+    sectionTopRef.current = rect.top + window.scrollY;
+    scrollableDistanceRef.current = Math.max(
+      1,
+      section.offsetHeight - window.innerHeight
+    );
 
     const displayWidth = window.innerWidth;
     const displayHeight = window.innerHeight;
 
-    // Use physical screen DPR capped responsively by device tier (2.0 desktop, 1.5 mobile, 1.0 low-tier)
+    // Use physical screen DPR capped responsively by device tier (2.0 desktop, 1.5 mobile)
     const rawDpr = window.devicePixelRatio || 1;
     const effectiveDpr = Math.min(rawDpr, dprCap);
 
@@ -246,236 +494,37 @@ export default function SparshaUnifiedHero() {
       canvas.height = bufferHeight;
     }
 
-    // CSS dimensions strictly match layout coordinates
     canvas.style.width = `${displayWidth}px`;
     canvas.style.height = `${displayHeight}px`;
 
-    // Redraw active frame immediately without resetting or reloading
-    if (
-      lastDrawnIndexRef.current >= 0 &&
-      bitmapCacheRef.current[lastDrawnIndexRef.current]
-    ) {
-      paintToCanvas(bitmapCacheRef.current[lastDrawnIndexRef.current]!);
+    // Redraw active frame immediately on resize to maintain sharp output
+    const activeIdx = displayedFrameRef.current;
+    if (activeIdx >= 0 && framesRef.current[activeIdx]?.data) {
+      paintToCanvas(framesRef.current[activeIdx].data!, activeIdx);
     } else {
-      const activeFrame = Math.min(
-        TOTAL_FRAMES - 1,
-        Math.max(0, Math.round(currentFrameRef.current))
-      );
-      drawFrameWithStrictContinuity(activeFrame);
-    }
-  }, [drawFrameWithStrictContinuity, isLowTier, paintToCanvas]);
-
-  // Load single frame with deduplicated requests, high-precision decoding, and instant presentation
-  const loadSingleFrame = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= TOTAL_FRAMES) return;
-      if (loadedFlagsRef.current[index] || inFlightFlagsRef.current[index]) return;
-
-      inFlightFlagsRef.current[index] = true;
-      activeLoadsRef.current++;
-
-      const img = new window.Image();
-      img.src = getFramePath(index);
-
-      const onComplete = async (success: boolean) => {
-        if (!isComponentMountedRef.current) return;
-
-        if (success) {
-          try {
-            if (typeof window.createImageBitmap === "function") {
-              const bitmap = await window.createImageBitmap(img, {
-                imageOrientation: "from-image",
-                premultiplyAlpha: "none",
-                colorSpaceConversion: "default",
-                resizeQuality: "high",
-              });
-              if (!isComponentMountedRef.current) return;
-              bitmapCacheRef.current[index] = bitmap;
-            } else if (typeof img.decode === "function") {
-              await img.decode();
-              if (!isComponentMountedRef.current) return;
-              bitmapCacheRef.current[index] = img;
-            } else {
-              bitmapCacheRef.current[index] = img;
-            }
-            loadedFlagsRef.current[index] = true;
-          } catch {
-            bitmapCacheRef.current[index] = img;
-            loadedFlagsRef.current[index] = true;
-          }
-        }
-
-        inFlightFlagsRef.current[index] = false;
-        activeLoadsRef.current = Math.max(0, activeLoadsRef.current - 1);
-
-        // Instant paint: if user is on this frame right now, draw it immediately!
-        const curTarget = targetFrameRef.current;
-        if (
-          success &&
-          Math.abs(curTarget - index) <= 1 &&
-          lastDrawnIndexRef.current !== index
-        ) {
-          const readyImg = bitmapCacheRef.current[index];
-          if (readyImg) {
-            paintToCanvas(readyImg);
-            lastDrawnIndexRef.current = index;
-            if (posterRef.current && posterRef.current.style.opacity !== "0") {
-              posterRef.current.style.opacity = "0";
-            }
-          }
-        }
-
-        // Advance active directional queue if slots open, else schedule background idle preload
-        if (activeLoadsRef.current < maxConcurrency) {
-          processQueueRef.current();
-        }
-        if (activeLoadsRef.current === 0) {
-          scheduleIdlePreloadRef.current();
-        }
-      };
-
-      img.onload = () => onComplete(true);
-      img.onerror = () => onComplete(false);
-    },
-    [maxConcurrency, paintToCanvas]
-  );
-
-  // Direction-aware, prioritized preloader queue with bounded concurrency & adaptive memory eviction
-  const processQueue = useCallback(() => {
-    if (!isComponentMountedRef.current) return;
-
-    const target = targetFrameRef.current;
-    const dir = scrollDirectionRef.current; // 1 (down) or -1 (up)
-    const loaded = loadedFlagsRef.current;
-    const inFlight = inFlightFlagsRef.current;
-
-    // --- Adaptive Frame Eviction: Prevent mobile Safari/Chrome OOM crashes ---
-    if (maxCacheSize < TOTAL_FRAMES) {
-      const loadedIndices: number[] = [];
-      for (let i = 0; i < TOTAL_FRAMES; i++) {
-        if (loaded[i]) loadedIndices.push(i);
-      }
-      if (loadedIndices.length > maxCacheSize) {
-        // Sort by distance from target descending (farthest frames first)
-        loadedIndices.sort((a, b) => Math.abs(b - target) - Math.abs(a - target));
-        const evictCount = loadedIndices.length - maxCacheSize;
-        for (let i = 0; i < evictCount; i++) {
-          const evictIdx = loadedIndices[i];
-          // Never evict target or immediate neighbors (±2)
-          if (Math.abs(evictIdx - target) > 2) {
-            const item = bitmapCacheRef.current[evictIdx];
-            if (item && "close" in item && typeof item.close === "function") {
-              item.close();
-            }
-            bitmapCacheRef.current[evictIdx] = null;
-            loadedFlagsRef.current[evictIdx] = false;
-          }
-        }
-      }
-    }
-
-    const candidates: number[] = [];
-    const added = new Set<number>();
-
-    const addCandidate = (idx: number) => {
-      if (idx >= 0 && idx < TOTAL_FRAMES && !added.has(idx)) {
-        added.add(idx);
-        candidates.push(idx);
-      }
-    };
-
-    // 1. Current target frame (highest priority)
-    addCandidate(target);
-
-    // 2. High priority directional lookahead in active scroll direction
-    for (let i = 1; i <= preloadForward; i++) {
-      addCandidate(target + i * dir);
-    }
-
-    // 3. Backward safety buffer
-    for (let i = 1; i <= preloadBackward; i++) {
-      addCandidate(target - i * dir);
-    }
-
-    // Dispatch requests up to maximum bounded concurrency
-    for (let i = 0; i < candidates.length; i++) {
-      if (activeLoadsRef.current >= maxConcurrency) {
-        break;
-      }
-      const idx = candidates[i];
-      if (!loaded[idx] && !inFlight[idx]) {
-        loadSingleFrame(idx);
-      }
-    }
-  }, [
-    loadSingleFrame,
-    maxCacheSize,
-    maxConcurrency,
-    preloadBackward,
-    preloadForward,
-  ]);
-
-  // Keep processQueue ref fresh
-  useEffect(() => {
-    processQueueRef.current = processQueue;
-  }, [processQueue]);
-
-  // Idle-time progressive preloader for background sequence preparation
-  const scheduleIdlePreload = useCallback(() => {
-    if (!isComponentMountedRef.current || activeLoadsRef.current > 0) return;
-
-    const requestIdle =
-      typeof window !== "undefined" && "requestIdleCallback" in window
-        ? (window as unknown as { requestIdleCallback: (cb: (deadline: { timeRemaining: () => number }) => void) => number }).requestIdleCallback
-        : (cb: (deadline: { timeRemaining: () => number }) => void) => setTimeout(() => cb({ timeRemaining: () => 50 }), 150);
-
-    requestIdle((deadline) => {
-      if (!isComponentMountedRef.current || activeLoadsRef.current > 0) return;
-
       const target = targetFrameRef.current;
-      const dir = scrollDirectionRef.current;
-      const loaded = loadedFlagsRef.current;
-      const inFlight = inFlightFlagsRef.current;
-
-      // On mobile/low-tier, don't exceed maxCacheSize even in idle
-      const currentLoadedCount = loaded.filter(Boolean).length;
-      if (currentLoadedCount >= maxCacheSize) return;
-
-      // Find nearest unloaded frame ahead in scroll direction, then behind
-      let nextToLoad = -1;
-      for (let offset = 1; offset < TOTAL_FRAMES; offset++) {
-        const ahead = target + offset * dir;
-        if (ahead >= 0 && ahead < TOTAL_FRAMES && !loaded[ahead] && !inFlight[ahead]) {
-          nextToLoad = ahead;
-          break;
-        }
-        const behind = target - offset * dir;
-        if (behind >= 0 && behind < TOTAL_FRAMES && !loaded[behind] && !inFlight[behind]) {
-          nextToLoad = behind;
-          break;
-        }
+      if (framesRef.current[target]?.data) {
+        paintToCanvas(framesRef.current[target].data!, target);
       }
+    }
+  }, [dprCap, paintToCanvas]);
 
-      if (nextToLoad !== -1 && deadline.timeRemaining() > 10) {
-        loadSingleFrame(nextToLoad);
-      }
-    });
-  }, [loadSingleFrame, maxCacheSize]);
-
-  // Keep scheduleIdlePreload ref fresh
-  useEffect(() => {
-    scheduleIdlePreloadRef.current = scheduleIdlePreload;
-  }, [scheduleIdlePreload]);
-
-  // Directly update DOM styles based on scroll progress (avoids all React component re-renders)
+  // Directly update DOM styles based on scroll progress (zero React re-renders)
   const updateScrollStyles = useCallback((progress: number) => {
     // 1. Hero UI Layer: 0% to 6% fully visible, 6% to 18% fades out & floats upward
     if (heroUiRef.current) {
-      const heroUiOpacity = Math.max(0, Math.min(1, 1 - (progress - 0.06) / 0.12));
-      const heroUiTranslateY = Math.min(80, Math.max(0, (progress - 0.06) * 400));
+      const heroUiOpacity = Math.max(
+        0,
+        Math.min(1, 1 - (progress - 0.06) / 0.12)
+      );
+      const heroUiTranslateY = Math.min(
+        80,
+        Math.max(0, (progress - 0.06) * 400)
+      );
       heroUiRef.current.style.opacity = heroUiOpacity.toFixed(3);
       heroUiRef.current.style.transform = `translate3d(0, -${heroUiTranslateY.toFixed(1)}px, 0)`;
-      heroUiRef.current.style.pointerEvents = heroUiOpacity > 0.08 ? "auto" : "none";
+      heroUiRef.current.style.pointerEvents =
+        heroUiOpacity > 0.08 ? "auto" : "none";
     }
 
     // 2. Canvas visibility: maintain 100% direct opacity for maximum color fidelity & contrast
@@ -525,154 +574,126 @@ export default function SparshaUnifiedHero() {
 
   useEffect(() => {
     isComponentMountedRef.current = true;
+    latestScrollYRef.current = window.scrollY;
+    lastScrollTimeRef.current = performance.now();
     handleResize();
 
-    // Check debug mode query parameter (?debug=1) and comparative test mode (?compare=1)
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("debug") === "1") {
-        isDebugModeRef.current = true;
-        if (debugHudRef.current) {
-          debugHudRef.current.classList.remove("hidden");
-          debugHudRef.current.classList.add("block");
-        }
+    // --- STARTUP PIPELINE ---
+    // 1. Priority load Frame 001 immediately (P0)
+    loadFrame(0, true);
+
+    // 2. Start initial queue dispatch with small delay so browser paints initial shell first
+    const startupTimer = setTimeout(() => {
+      if (isComponentMountedRef.current) {
+        dispatchQueueRef.current();
       }
-      if (params.get("compare") === "1") {
-        isCompareModeRef.current = true;
-        if (compareContainerRef.current) {
-          compareContainerRef.current.classList.remove("hidden");
-          compareContainerRef.current.classList.add("block");
-        }
+    }, 60);
+
+    // --- LIGHTWEIGHT NATIVE SCROLL LISTENER WITH VELOCITY TRACKING ---
+    const onScroll = () => {
+      const y = window.scrollY;
+      const now = performance.now();
+      const dt = now - lastScrollTimeRef.current;
+      if (dt > 8) {
+        velocityRef.current = (y - latestScrollYRef.current) / dt;
+        lastScrollTimeRef.current = now;
       }
-    }
+      latestScrollYRef.current = y;
+    };
 
-    // --- PHASE 1: Load Frame 001 immediately with priority and paint to canvas ---
-    loadSingleFrame(0);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
 
-    // --- PHASE 2: Load immediate critical window (frames 1 to 5) for instant scrolling readiness ---
-    for (let f = 1; f <= 5; f++) {
-      loadSingleFrame(f);
-    }
+    // --- SINGLE AUTHORITATIVE REQUESTANIMATIONFRAME LOOP ---
+    const renderLoop = () => {
+      if (!isComponentMountedRef.current || !isIntersectingRef.current) return;
 
-    // --- DETERMINISTIC SCROLL LISTENER (RAF THROTTLED) ---
-    let scrollTicking = false;
-    const calculateProgress = () => {
-      const section = sectionRef.current;
-      if (!section) return;
-
-      const rect = section.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const totalScrollableDistance = rect.height - viewportHeight;
-
-      if (totalScrollableDistance <= 0) return;
-
-      const scrolledPastTop = -rect.top;
-      const progress = Math.min(
-        1,
-        Math.max(0, scrolledPastTop / totalScrollableDistance)
-      );
-
+      // 1. Calculate scroll progress from cached geometry & latest scroll position (Zero reflow!)
+      const scrollY = latestScrollYRef.current;
+      const distance = scrollY - sectionTopRef.current;
+      const maxDistance = scrollableDistanceRef.current;
+      const progress =
+        maxDistance > 0 ? Math.min(1, Math.max(0, distance / maxDistance)) : 0;
       scrollProgressRef.current = progress;
 
-      // Deterministic frame calculation: 001 to 300
-      const targetFrame = Math.min(
+      // 2. Deterministic target frame: 0 to 299 (Master timeline driven strictly by scroll)
+      const target = Math.min(
         TOTAL_FRAMES - 1,
         Math.max(0, Math.round(progress * (TOTAL_FRAMES - 1)))
       );
 
       const prevTarget = targetFrameRef.current;
-      if (targetFrame !== prevTarget) {
-        scrollDirectionRef.current = targetFrame >= prevTarget ? 1 : -1;
-        targetFrameRef.current = targetFrame;
-        // Reprioritize queue immediately when target or scroll direction changes
-        processQueueRef.current();
+      if (target !== prevTarget) {
+        scrollDirectionRef.current = target >= prevTarget ? 1 : -1;
+        targetFrameRef.current = target;
+        dispatchQueueRef.current();
       }
 
+      // 3. Update DOM overlay styles
       updateScrollStyles(progress);
-    };
 
-    const updateScrollState = () => {
-      if (!scrollTicking) {
-        window.requestAnimationFrame(() => {
-          calculateProgress();
-          scrollTicking = false;
-        });
-        scrollTicking = true;
-      }
-    };
+      // 4. AUTHORITATIVE RENDERING:
+      const displayed = displayedFrameRef.current;
+      if (target !== displayed) {
+        const targetEntry = framesRef.current[target];
+        if (targetEntry && targetEntry.status === "loaded" && targetEntry.data) {
+          // Target is loaded: render immediately!
+          paintToCanvas(targetEntry.data, target);
+        } else {
+          // Target is not loaded yet:
+          // Check if an intermediate frame between displayed and target in the scroll direction is available
+          let intermediate = -1;
+          if (target > displayed) {
+            // Scrolling down: find highest loaded frame <= target that is > displayed
+            for (let f = target - 1; f > displayed; f--) {
+              if (
+                framesRef.current[f]?.status === "loaded" &&
+                framesRef.current[f]?.data
+              ) {
+                intermediate = f;
+                break;
+              }
+            }
+          } else {
+            // Scrolling up: find lowest loaded frame >= target that is < displayed
+            for (let f = target + 1; f < displayed; f++) {
+              if (
+                framesRef.current[f]?.status === "loaded" &&
+                framesRef.current[f]?.data
+              ) {
+                intermediate = f;
+                break;
+              }
+            }
+          }
 
-    window.addEventListener("scroll", updateScrollState, { passive: true });
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
+          if (intermediate !== -1 && framesRef.current[intermediate]?.data) {
+            paintToCanvas(framesRef.current[intermediate].data!, intermediate);
+          }
+          // If no intermediate loaded, KEEP LAST VALID FRAME (displayedFrameRef.current).
+          // NEVER clear canvas, NEVER flash, NEVER jump to distant unrelated frame.
 
-    // Initial position calculation
-    calculateProgress();
-
-    // --- SINGLE PERSISTENT REQUESTANIMATIONFRAME LOOP ---
-    const renderLoop = (timestamp: number) => {
-      if (!isComponentMountedRef.current || !isIntersectingRef.current) return;
-
-      // Debug FPS measurement
-      if (isDebugModeRef.current) {
-        frameCountRef.current++;
-        if (timestamp - lastFpsTimeRef.current >= 1000) {
-          fpsRef.current = Math.round(
-            (frameCountRef.current * 1000) /
-              (timestamp - lastFpsTimeRef.current)
-          );
-          frameCountRef.current = 0;
-          lastFpsTimeRef.current = timestamp;
-          updateDebugHUD();
+          if (targetEntry?.status === "idle") {
+            dispatchQueueRef.current();
+          }
         }
       }
 
-      const target = targetFrameRef.current;
-      const current = currentFrameRef.current;
-      const diff = target - current;
-
-      if (prefersReducedMotionRef.current || Math.abs(diff) < 0.5) {
-        currentFrameRef.current = target;
-      } else {
-        // Highly responsive: eliminates animation lag while preventing sub-pixel sampling jitter
-        currentFrameRef.current += diff * 0.65;
-      }
-
-      const desiredIndex = Math.min(
-        TOTAL_FRAMES - 1,
-        Math.max(0, Math.round(currentFrameRef.current))
-      );
-
-      // Only attempt draw when desired frame differs from last drawn
-      if (desiredIndex !== lastDrawnIndexRef.current) {
-        drawFrameWithStrictContinuity(desiredIndex);
-      }
-
-      // Update frame counter DOM (zero React re-render)
-      if (counterTextRef.current) {
-        const displayIdx =
-          lastDrawnIndexRef.current >= 0
-            ? lastDrawnIndexRef.current
-            : desiredIndex;
-        counterTextRef.current.textContent = String(displayIdx + 1).padStart(
-          3,
-          "0"
-        );
-      }
-
-      if (isDebugModeRef.current) {
-        updateDebugHUD();
-      }
+      // Decay velocity when scrolling ceases
+      velocityRef.current *= 0.85;
 
       animationFrameIdRef.current = requestAnimationFrame(renderLoop);
     };
 
-    // IntersectionObserver to pause RAF loop when hero section is not visible
+    // Pause RAF loop when hero section is offscreen
     const observer = new IntersectionObserver(
       ([entry]) => {
         const wasIntersecting = isIntersectingRef.current;
         isIntersectingRef.current = entry.isIntersecting;
 
         if (entry.isIntersecting && !wasIntersecting) {
+          handleResize();
           if (!animationFrameIdRef.current) {
             animationFrameIdRef.current = requestAnimationFrame(renderLoop);
           }
@@ -690,7 +711,7 @@ export default function SparshaUnifiedHero() {
       observer.observe(sectionRef.current);
     }
 
-    // Tab visibility handling: pause render loop when tab is hidden, resume on current scroll when visible
+    // Tab visibility handling
     const handleVisibilityChange = () => {
       if (document.hidden) {
         if (animationFrameIdRef.current) {
@@ -698,7 +719,8 @@ export default function SparshaUnifiedHero() {
           animationFrameIdRef.current = null;
         }
       } else if (isIntersectingRef.current && isComponentMountedRef.current) {
-        calculateProgress();
+        latestScrollYRef.current = window.scrollY;
+        handleResize();
         if (!animationFrameIdRef.current) {
           animationFrameIdRef.current = requestAnimationFrame(renderLoop);
         }
@@ -706,27 +728,52 @@ export default function SparshaUnifiedHero() {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Start initial single persistent RAF loop
+    // Start single authoritative persistent RAF loop
     animationFrameIdRef.current = requestAnimationFrame(renderLoop);
 
     return () => {
       isComponentMountedRef.current = false;
+      clearTimeout(startupTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("scroll", updateScrollState);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
       observer.disconnect();
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+      if (idleCallbackIdRef.current !== null) {
+        if (typeof window !== "undefined") {
+          const win = window as unknown as { cancelIdleCallback?: (id: number) => void };
+          if (typeof win.cancelIdleCallback === "function") {
+            win.cancelIdleCallback(idleCallbackIdRef.current);
+          } else {
+            clearTimeout(idleCallbackIdRef.current);
+          }
+        } else {
+          clearTimeout(idleCallbackIdRef.current);
+        }
+        idleCallbackIdRef.current = null;
+      }
+      // Abort all in-flight requests and close ImageBitmaps
+      for (let i = 0; i < TOTAL_FRAMES; i++) {
+        const entry = framesRef.current[i];
+        if (entry.abortController) {
+          entry.abortController.abort();
+        }
+        if (entry.data) {
+          if ("close" in entry.data && typeof entry.data.close === "function") {
+            entry.data.close();
+          }
+          entry.data = null;
+        }
       }
     };
   }, [
-    drawFrameWithStrictContinuity,
     handleResize,
-    loadSingleFrame,
+    loadFrame,
     paintToCanvas,
-    processQueue,
-    updateDebugHUD,
     updateScrollStyles,
   ]);
 
@@ -739,7 +786,6 @@ export default function SparshaUnifiedHero() {
     >
       {/* Sticky Fullscreen Viewport Container */}
       <div className="sticky top-0 left-0 h-[100svh] min-h-[100svh] sm:h-screen w-full overflow-hidden bg-gradient-to-b from-[#fdf8f9] via-[#faedf1] to-[#fbf2f5]">
-        
         {/* ======================================================== */}
         {/* LAYER 0: Critical First-Frame Poster (Instant 1st Paint)  */}
         {/* ======================================================== */}
@@ -753,7 +799,7 @@ export default function SparshaUnifiedHero() {
             alt="Sparsha Hero Product First Frame"
             className="h-full w-full object-cover"
             fetchPriority="high"
-            decoding="sync"
+            decoding="async"
           />
         </div>
 
@@ -766,7 +812,7 @@ export default function SparshaUnifiedHero() {
           style={{ imageRendering: "auto" }}
         />
 
-        {/* Subtle top & bottom edge blending (leaves the entire center 85% crystal clear) */}
+        {/* Subtle top & bottom edge blending (leaves center crystal clear) */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#fdf8f9]/70 to-transparent z-10" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#faedf1]/70 to-transparent z-10" />
 
@@ -783,7 +829,6 @@ export default function SparshaUnifiedHero() {
           }}
         >
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-8 items-center my-auto">
-            
             {/* Left Column: 42-45% width */}
             <div className="lg:col-span-5 flex flex-col justify-center">
               {/* Eyebrow Brand Tag */}
@@ -961,7 +1006,6 @@ export default function SparshaUnifiedHero() {
                 </div>
               </div>
             </div>
-
           </div>
         </div>
 
@@ -969,8 +1013,8 @@ export default function SparshaUnifiedHero() {
         {/* LAYER 3: Cinematic Narrative Milestones                  */}
         {/* Appear smoothly during the cinematic middle scroll phase */}
         {/* ======================================================== */}
-        
-        {/* Milestone 1: Beginning (20% - 42%) */}
+
+        {/* Milestone 1: Beginning (18% - 42%) */}
         <div
           ref={milestone1Ref}
           className="pointer-events-none absolute top-24 sm:top-28 left-4 right-4 sm:left-12 sm:right-auto max-w-sm transition-all duration-700 opacity-0 -translate-y-4"
@@ -1029,7 +1073,7 @@ export default function SparshaUnifiedHero() {
           </div>
         </div>
 
-        {/* Initial Scroll Prompt Guidance (fades out as soon as user begins scrolling) */}
+        {/* Initial Scroll Prompt Guidance (fades out as user begins scrolling) */}
         <div
           ref={scrollPromptRef}
           className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-500 opacity-100"
@@ -1054,36 +1098,6 @@ export default function SparshaUnifiedHero() {
           <span>{TOTAL_FRAMES}</span>
         </div>
 
-        {/* Development-only Debug HUD (visible strictly when URL contains ?debug=1) */}
-        <div
-          ref={debugHudRef}
-          className="pointer-events-none fixed bottom-4 left-4 z-50 hidden rounded-xl bg-black/85 p-3 font-mono text-[11px] leading-relaxed text-white shadow-2xl backdrop-blur-md border border-white/20"
-        />
-
-        {/* Development-only Source vs Canvas Split-Test Comparator (?compare=1) */}
-        <div
-          ref={compareContainerRef}
-          className="pointer-events-none fixed top-20 right-4 z-50 hidden max-w-xs sm:max-w-sm rounded-xl bg-black/90 p-3 font-mono text-[11px] text-white shadow-2xl backdrop-blur-md border border-white/20"
-        >
-          <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-white/20">
-            <span className="font-bold text-[#f472b6]">SOURCE &lt;img&gt; COMPARATOR</span>
-            <span className="text-[10px] text-emerald-400 font-semibold">1:1 MATCH</span>
-          </div>
-          <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-white/30 bg-black">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              ref={compareImgRef}
-              alt="Raw source frame reference"
-              className="h-full w-full object-cover"
-            />
-            <div className="absolute top-1 left-1 rounded bg-black/80 px-1.5 py-0.5 text-[9px] text-white">
-              Raw Source JPG (2544×1440)
-            </div>
-          </div>
-          <div className="mt-1.5 text-[9px] text-slate-400 leading-tight">
-            Live comparison: canvas output in main viewport vs raw source JPG file.
-          </div>
-        </div>
       </div>
     </section>
   );

@@ -64,13 +64,13 @@ export function useAdaptivePerformance(): AdaptivePerformance {
     const reduceBlur = isLowTier || isMobile;
 
     // Adaptive memory limits:
-    // Low tier / small mobile: 45 frames (prevents OOM / GC pauses, RAM < 150MB)
+    // Low tier / small mobile: 45 frames (~650MB decoded RAM window)
     // Medium tier / tablet: 80 frames
-    // High tier / desktop: 300 frames (entire sequence)
-    const maxCacheSize = isLowTier ? 45 : isMobile ? 55 : tier === "medium" ? 90 : 300;
-    const preloadForward = isLowTier ? 12 : isMobile ? 18 : 28;
-    const preloadBackward = isLowTier ? 4 : isMobile ? 6 : 8;
-    const maxConcurrency = isLowTier ? 3 : isMobile ? 4 : 5;
+    // High tier / desktop: 160 frames (~2.3GB managed window with LRU eviction)
+    const maxCacheSize = isLowTier ? 45 : isMobile ? 55 : tier === "medium" ? 85 : 160;
+    const preloadForward = isLowTier ? 10 : isMobile ? 16 : 24;
+    const preloadBackward = isLowTier ? 3 : isMobile ? 5 : 8;
+    const maxConcurrency = isLowTier ? 3 : isMobile ? 4 : 6;
 
     setPerf({
       tier,
